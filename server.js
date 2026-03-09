@@ -8,8 +8,11 @@ const path = require('path');
 const fs = require('fs');
 const admin = require('firebase-admin');
 const cron = require('node-cron');
-const serviceAccount = require('./firebase-key.json'); 
-require('dotenv').config(); // CHARGER LES VARIABLES D'ENVIRONNEMENT
+// Remplacez : const serviceAccount = require('./firebase-key.json');
+// Par ceci 👇
+require('dotenv').config(); 
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
