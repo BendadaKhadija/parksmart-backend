@@ -43,17 +43,26 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const port = process.env.PORT || 8000;
 
 // ==========================================
-// 1. CONNEXION BDD
+// 1. CONNEXION BDD (Compatible Railway + Local)
 // ==========================================
-const db = mysql.createPool({
-  host: process.env.DB_HOST || '127.0.0.1',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '', 
-  database: process.env.DB_NAME || 'parksmart_db',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+let db;
+if (process.env.MYSQL_URL) {
+  // Railway : utilise l'URL de connexion complète (la plus fiable)
+  console.log("📡 Connexion via MYSQL_URL (Railway)");
+  db = mysql.createPool(process.env.MYSQL_URL);
+} else {
+  // Local : utilise les variables individuelles
+  console.log("💻 Connexion locale");
+  db = mysql.createPool({
+    host: process.env.DB_HOST || '127.0.0.1',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASS || '', 
+    database: process.env.DB_NAME || 'parksmart_db',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  });
+}
 
 // Test de connexion au démarrage
 db.getConnection()
