@@ -1145,6 +1145,35 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
         res.status(500).json({ error: "Erreur base de données" });
     }
 });
+// ==========================================
+// 5. ROUTES UTILISATEUR (Pour éviter les 404)
+// ==========================================
+
+// Récupérer l'historique des réservations (Correction du 404)
+app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        // Remplacez par votre vraie requête SQL pour l'historique
+        const [history] = await db.query('SELECT * FROM reservation WHERE id_cond = ?', [userId]);
+        res.json(history);
+    } catch (error) {
+        console.error("Erreur Historique :", error);
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// Récupérer les notifications (Correction du 404)
+app.get('/api/notifications/:id', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        // Si vous n'avez pas encore de table notification, renvoyez un tableau vide pour éviter le crash du frontend
+        // const [notifs] = await db.query('SELECT * FROM notification WHERE id_cond = ?', [userId]);
+        res.json([]); // <- Renvoie un tableau vide pour l'instant
+    } catch (error) {
+        console.error("Erreur Notifications :", error);
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
 //=========================================
 // 6. LANCEMENT
 // ==========================================
