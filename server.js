@@ -211,30 +211,30 @@ app.post('/api/auth/login', async (req, res) => {
 });
 app.post('/api/auth/google', async (req, res) => {
   try {
-    // 👇 --- LES 5 LIGNES MAGIQUES SONT ICI --- 👇
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ message: 'Aucun token fourni dans le header.' });
     }
 
-    // On récupère la vraie chaîne du token (après le mot "Bearer ")
     const token = authHeader.split(' ')[1];
-    // 👆 -------------------------------------- 👆
 
+    // --- VÉRIFICATION FIREBASE ---
+    // On s'assure que le token est envoyé à Firebase Admin
     const decodedToken = await admin.auth().verifyIdToken(token);
     const email = decodedToken.email;
 
+    // --- RECHERCHE OU CRÉATION UTILISATEUR ---
     let result = await findUserByEmail(email);
     let user, role, userId;
 
     if (!result) {
-      // L'utilisateur n'existe pas, on le crée en tant que 'conducteur'
-      console.log("Nouvel utilisateur Google détecté, création du compte...");
+      console.log("Nouvel utilisateur Google détecté...");
       const nomComplet = decodedToken.name || 'Utilisateur Google';
       const photo = decodedToken.picture || null;
-      const [prenom, ...nomArray] = nomComplet.split(' ');
-      const nom = nomArray.join(' ') || prenom; 
+      const nameParts = nomComplet.split(' ');
+      const prenom = nameParts[0];
+      const nom = nameParts.slice(1).join(' ') || prenom; 
       
       const [insertResult] = await db.query(
         'INSERT INTO conducteur (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
@@ -246,26 +246,26 @@ app.post('/api/auth/google', async (req, res) => {
       user = { id_cond: userId, nom, prenom, email, photo };
     } else {
       ({ user, role, userId } = result);
-      // Potentiellement mettre à jour la photo de profil si elle a changé sur Google
       if (user.photo !== decodedToken.picture) {
           const photo = decodedToken.picture || null;
-          await db.query(`UPDATE ${role === 'conducteur' ? 'conducteur' : 'gestionnaire'} SET photo = ? WHERE ${role === 'conducteur' ? 'id_cond' : 'id_gest'} = ?`, [photo, userId]);
+          const table = role === 'conducteur' ? 'conducteur' : 'gestionnaire';
+          const idCol = role === 'conducteur' ? 'id_cond' : 'id_gest';
+          await db.query(`UPDATE ${table} SET photo = ? WHERE ${idCol} = ?`, [photo, userId]);
           user.photo = photo;
       }
     }
 
-    // ⚠️ ATTENTION : REGARDEZ LA LIGNE SUIVANTE DANS VOTRE CODE ⚠️
+    // --- GÉNÉRATION DU TOKEN JWT POUR VOTRE APP ---
     const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
-    console.log(`Connexion Google réussie pour : ${email}`);
+    console.log(`✅ Connexion Google réussie : ${email}`);
     
-    if (user.password) delete user.password;
-
     res.json({ 
       token: jwtToken, 
       user: { 
           id: userId, 
           nom: user.nom,
+          prenom: user.prenom,
           email: user.email, 
           role: role, 
           photo: user.photo
@@ -273,8 +273,12 @@ app.post('/api/auth/google', async (req, res) => {
     });
 
   } catch (error) {
-    console.error("🚨 ERREUR GOOGLE LOGIN CRITIQUE :", error);
-    res.status(401).json({ message: 'Token Google invalide, expiré ou refusé.' });
+    console.error("🚨 ERREUR GOOGLE AUTH :", error.message);
+    // On renvoie l'erreur précise pour debugger
+    res.status(401).json({ 
+      message: 'Erreur d\'authentification', 
+      error: error.message 
+    });
   }
 });
 
