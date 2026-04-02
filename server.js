@@ -815,37 +815,23 @@ app.post('/api/paiement/confirm', authMiddleware, async (req, res) => {
             return res.status(403).json({ success: false, message: "Accès non autorisé à cette réservation." });
         }
 
-        const datepaiement = new Date();
-
-        // 1. Enregistrer le paiement
+        // SIMPLIFICATION : La route 'stop' a déjà mis fin à la réservation et libéré la place.
+        // Cette route ne fait plus qu'une seule chose : enregistrer que le paiement a bien été effectué.
         await db.query(
             "INSERT INTO paiement (id_resa, montant, date, mode) VALUES (?, ?, ?, ?)",
-            [id_resa, montant, datepaiement, mode]
+            [id_resa, montant, new Date(), mode]
         );
 
-        // 2. Mettre à jour la RÉSERVATION (Date de fin et Prix final)
-        // NOW() permet d'avoir l'heure exacte du serveur SQL
-        await db.query(
-            "UPDATE reservation SET date_depart = NOW(), prix_total = ? WHERE id_resa = ?",
-            [montant, id_resa]
-        );
-
-        // 3. Libérer la place (Remettre disponibilite à 1)
-        // On cherche d'abord quelle place correspond à cette réservation
-        await db.query(
-            `UPDATE place 
-             JOIN reservation ON place.id_place = reservation.id_place 
-             SET place.disponibilite = 1 
-             WHERE reservation.id_resa = ?`,
-            [id_resa]
-        );
-
-        console.log("Cycle complet terminé : Payé, Fermé, Libéré.");
-        res.json({ success: true, message: "Paiement validé et réservation clôturée !" });
+        console.log(`Paiement de ${montant} pour la réservation ${id_resa} enregistré.`);
+        res.json({ success: true, message: "Paiement enregistré avec succès !" });
 
     } catch (err) {
         console.error("Erreur SQL Finale :", err);
-        res.status(500).json({ success: false, message: "Erreur serveur", details: err.sqlMessage });
+        // Gestion d'erreur si le paiement existe déjà (si id_resa est une clé unique dans la table paiement)
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ success: false, message: "Un paiement a déjà été enregistré pour cette réservation." });
+        }
+        res.status(500).json({ success: false, message: "Erreur serveur", details: err.message });
     }
 });
 // ==========================================
@@ -1078,7 +1064,7 @@ cron.schedule('* * * * *', async () => {
         const [reservations] = await db.query(querySelect);
 
         for (const resa of reservations) {
-            const titre = "Rappel de stationnement "; // Changed emoji for consistency with "1 minute"
+            const titre = "Rappel de stationnement"; // Changed emoji for consistency with "1 minute"
             const message = `Attention : Cela fait plus de 1 minute que votre stationnement (Réservation n°${resa.id_resa}) a commencé.`;
 
             const checkNotifQuery = `SELECT id_notif FROM notification WHERE id_cond = ? AND message = ?`;
@@ -1143,76 +1129,6 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error("Erreur lors de la sauvegarde du Token FCM :", error);
         res.status(500).json({ error: "Erreur base de données" });
-    }
-});
-// ==========================================
-// ROUTES HISTORIQUE & NOTIFICATIONS (POUR LE FRONTEND)
-// ==========================================
-// 1. Récupérer l'historique (Le frontend appelle /api/reservations/history/5)
-app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.params.id;
-
-        // Sécurité : on vérifie que l'utilisateur demande bien son propre historique
-        if (parseInt(userId) !== req.auth.userId) {
-            return res.status(403).json({ message: "Accès refusé." });
-        }
-
-        // ✅ CORRECTION ICI : On utilise bien pk.tarif_heure (le vrai nom dans votre base)
-        const sql = `
-            SELECT 
-                r.*, 
-                pk.nom, 
-                pk.adresse, 
-                pk.tarif_heure AS tarif,
-                pk.tarif_heure,
-                pk.image
-            FROM reservation r
-            JOIN place pl ON r.id_place = pl.id_place
-            JOIN parking pk ON pl.id_park = pk.id_park
-            WHERE r.id_cond = ? 
-            ORDER BY r.date_arrivee DESC
-        `;
-
-        const [history] = await db.query(sql, [userId]);
-        res.json(history);
-    } catch (error) {
-        console.error("Erreur Historique :", error);
-        res.status(500).json({ message: "Erreur serveur" });
-    }
-});
-// 2. Récupérer les notifications (Le frontend appelle /api/notifications/5)
-app.get('/api/notifications/:id', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.params.id; // Récupère le "5" envoyé par le frontend
-
-        if (parseInt(userId) !== req.auth.userId) {
-            return res.status(403).json({ message: "Accès refusé." });
-        }
-
-        // Modifiez "date_notif" par le vrai nom de votre colonne de date si c'est "created_at"
-        const [notifs] = await db.query('SELECT * FROM notification WHERE id_cond = ?', [userId]);
-        res.json(notifs);
-    } catch (error) {
-        console.error("Erreur Notifications :", error);
-        res.status(500).json({ message: "Erreur serveur" });
-    }
-});
-
-// 3. Récupérer la réservation active (Au cas où votre frontend l'appelle aussi)
-app.get('/api/reservation/active', authMiddleware, async (req, res) => {
-    try {
-        // On cherche une réservation avec le statut 'en_cours'
-        const [active] = await db.query('SELECT * FROM reservation WHERE id_cond = ? AND statut = "en_cours" LIMIT 1', [req.auth.userId]);
-        
-        if (active.length > 0) {
-            res.json(active[0]);
-        } else {
-            res.json(null);
-        }
-    } catch (error) {
-        console.error("Erreur Réservation Active :", error);
-        res.json(null);
     }
 });
 //=========================================
