@@ -164,26 +164,35 @@ app.post('/api/auth/login', async (req, res) => {
     const result = await findUserByEmail(email);
 
     if (!result) {
-      return res.status(404).json({ message: 'Email inconnu.' });
+      // Message générique pour ne pas confirmer si un email existe ou non (sécurité).
+      return res.status(401).json({ message: 'Email ou mot de passe incorrect.' });
     }
 
     const { user, role, userId } = result;
 
     // --- CONTRÔLE DE SÉCURITÉ : Vérifier si l'utilisateur a un mot de passe pour la connexion standard ---
-    // Si l'utilisateur n'a pas de mot de passe (ex: créé via Google), on refuse la connexion par mot de passe.
     if (!user.password || user.password === 'google_sso_no_password') {
         console.warn(`Tentative de connexion par mot de passe pour l'utilisateur ${email} qui n'a pas de mot de passe défini (probablement SSO).`);
         return res.status(400).json({ message: "Ce compte est lié à une connexion Google. Veuillez utiliser le bouton 'Se connecter avec Google'." });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    let isMatch = false;
+    try {
+        // On isole la comparaison pour attraper les erreurs de hash invalide.
+        isMatch = await bcrypt.compare(password, user.password);
+    } catch (bcryptError) {
+        // Cette erreur se produit si user.password n'est pas un hash bcrypt valide.
+        // C'est une erreur serveur, mais on ne veut pas la montrer au client.
+        console.error(`Erreur Bcrypt pour l'utilisateur ${email}: Le hash du mot de passe est probablement invalide.`, bcryptError.message);
+        // On laisse isMatch à false pour que la logique continue comme un mot de passe incorrect.
+    }
+
     if (!isMatch) {
-      return res.status(400).json({ message: 'Mot de passe incorrect.' });
+      return res.status(401).json({ message: 'Email ou mot de passe incorrect.' });
     }
 
     const token = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
-    // On ne renvoie jamais le mot de passe, même hashé
     if (user.password) delete user.password;
 
     res.json({ 
@@ -191,8 +200,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: { ...user, id: userId, role: role, prenom: user.prenom || null } // Assurez-vous que prenom est toujours présent
     });
 
-  } catch (error) { // Catch all other potential errors
-    console.error("Erreur Login :", error);
+  } catch (error) { // Attrape les autres erreurs vraiment inattendues
+    console.error("Erreur fatale inattendue dans la route Login :", error);
     res.status(500).json({ message: 'Erreur serveur' });
   }
 });
