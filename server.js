@@ -1,4 +1,4 @@
-﻿// Forcer le redÃ©ploiement Railway - v2
+﻿// Forcer le redéploiement Railway - v2
 const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
@@ -20,18 +20,18 @@ if (serviceAccountString) {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
-    console.log("âœ… Firebase Admin SDK initialisÃ©.");
+    console.log("Firebase Admin SDK initialisé.");
   } catch (error) {
-    console.error("âŒ Erreur lors de l'initialisation de Firebase Admin. VÃ©rifiez la variable d'environnement FIREBASE_SERVICE_ACCOUNT.", error.message);
+    console.error("Erreur lors de l'initialisation de Firebase Admin. Vérifiez la variable d'environnement FIREBASE_SERVICE_ACCOUNT.", error.message);
   }
 } else {
-  console.warn("âš ï¸ La variable d'environnement FIREBASE_SERVICE_ACCOUNT est manquante. Les fonctionnalitÃ©s liÃ©es Ã  Firebase (Google Auth, Push Notifications) seront dÃ©sactivÃ©es.");
+  console.warn("La variable d'environnement FIREBASE_SERVICE_ACCOUNT est manquante. Les fonctionnalités liées à Firebase (Google Auth, Push Notifications) seront désactivées.");
 }
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-// CrÃ©ation du dossier 'uploads' s'il n'existe pas
+// Création du dossier 'uploads' s'il n'existe pas
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
@@ -58,11 +58,11 @@ const port = process.env.PORT || 55637;
 let db;
 if (process.env.MYSQL_URL) {
   // Railway : utilise l'URL de connexion complÃ¨te (la plus fiable)
-  console.log("ðŸ“¡ Connexion via MYSQL_URL (Railway)");
+  console.log("Connexion via MYSQL_URL (Railway)");
   db = mysql.createPool(process.env.MYSQL_URL);
 } else {
   // Local : utilise les variables individuelles
-  console.log("ðŸ’» Connexion locale");
+  console.log("Connexion locale");
   db = mysql.createPool({
     host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'root',
@@ -74,14 +74,14 @@ if (process.env.MYSQL_URL) {
   });
 }
 
-// Test de connexion au dÃ©marrage
+// Test de connexion au démarrage
 db.getConnection()
     .then(connection => {
-        console.log("âœ… ConnectÃ© Ã  la base de donnÃ©es MySQL !");
+        console.log("Connecté à la base de données MySQL !");
         connection.release();
     })
     .catch(err => {
-        console.error("âŒ Erreur de connexion BDD :", err.message);
+        console.error("Erreur de connexion BDD :", err.message);
     });
 
 // ==========================================
@@ -94,8 +94,8 @@ app.post('/api/auth/signup', upload.single('image'), async (req, res) => {
     // req.body contient le texte (nom, email...)
     const { nom,prenom, email, password, role } = req.body; 
     
-    // req.file contient l'image (si envoyÃ©e)
-    // Si il y a une image, on crÃ©e le chemin, sinon on met null
+    // req.file contient l'image (si envoyée)
+    // Si il y a une image, on crée le chemin, sinon on met null
     const photoPath = req.file ? `/uploads/${req.file.filename}` : null;
 
     if (!nom || !prenom || !email || !password) {
@@ -105,24 +105,24 @@ app.post('/api/auth/signup', upload.single('image'), async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     if (role === 'gestionnaire') {
-        // âš ï¸ AJOUT de la colonne photo dans la requÃªte SQL
+        // AJOUT de la colonne photo dans la requête SQL
         await db.query(
             'INSERT INTO gestionnaire (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
             [nom,prenom, email, hashedPassword, photoPath]
         );
     } else {
-        // âš ï¸ AJOUT de la colonne photo dans la requÃªte SQL
+        // AJOUT de la colonne photo dans la requête SQL
         await db.query(
             'INSERT INTO conducteur (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
             [nom,prenom, email, hashedPassword, photoPath]
         );
     }
     
-    res.status(201).json({ message: 'Compte crÃ©Ã© avec succÃ¨s !' });
+    res.status(201).json({ message: 'Compte créé avec succès !' });
 
   } catch (error) {
     console.error("Erreur Inscription :", error);
-    res.status(500).json({ message: "Erreur serveur ou Email dÃ©jÃ  utilisÃ©." });
+    res.status(500).json({ message: "Erreur serveur ou Email déjà utilisé." });
   }
 });
 
@@ -173,15 +173,15 @@ app.post('/api/auth/google', async (req, res) => {
   try {
     const { token } = req.body;
     
-    // 1. Demander Ã  Firebase de vÃ©rifier si le token est un vrai
+    // 1. Demander à Firebase de vérifier si le token est un vrai
     const decodedToken = await admin.auth().verifyIdToken(token);
     
-    // On rÃ©cupÃ¨re les infos sÃ©curisÃ©es de Google
+    // On récupère les infos sécurisées de Google
     const email = decodedToken.email;
     const nomComplet = decodedToken.name || 'Utilisateur Google';
     const photo = decodedToken.picture || null;
 
-    // Petite astuce pour sÃ©parer Nom et PrÃ©nom (si Google donne tout d'un coup)
+    // Petite astuce pour séparer Nom et Prénom (si Google donne tout d'un coup)
     const [prenom, ...nomArray] = nomComplet.split(' ');
     const nom = nomArray.join(' ') || prenom; 
 
@@ -205,9 +205,9 @@ app.post('/api/auth/google', async (req, res) => {
       }
     }
 
-    // 4. SI L'UTILISATEUR N'EXISTE PAS : On le crÃ©e automatiquement !
+    // 4. SI L'UTILISATEUR N'EXISTE PAS : On le crée automatiquement !
     if (!user) {
-      console.log("Nouvel utilisateur Google dÃ©tectÃ©, crÃ©ation du compte...");
+      console.log("Nouvel utilisateur Google détecté, création du compte...");
       
       const [result] = await db.query(
         'INSERT INTO conducteur (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
@@ -219,10 +219,10 @@ app.post('/api/auth/google', async (req, res) => {
       user = { id_cond: userId, nom: nom, prenom: prenom, email: email, photo: photo };
     }
 
-    // 5. GÃ©nÃ©rer TON token
+    // 5. Générer TON token
     const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
-    console.log(`âœ… Connexion Google rÃ©ussie pour : ${email}`);
+    console.log(`Connexion Google réussie pour : ${email}`);
 
     // 6. Renvoyer au front
     res.json({ 
@@ -237,8 +237,8 @@ app.post('/api/auth/google', async (req, res) => {
     });
 
   } catch (error) {
-    console.error("âŒ Erreur Google Login Backend :", error);
-    res.status(401).json({ message: 'Token Google invalide, expirÃ© ou refusÃ©.' });
+    console.error("Erreur Google Login Backend :", error);
+    res.status(401).json({ message: 'Token Google invalide, expiré ou refusé.' });
   }
 });
 
@@ -246,35 +246,35 @@ app.post('/api/auth/google', async (req, res) => {
 // 4. ROUTES ADMIN (gestionnaire)
 // ==========================================
 
-// AJOUTER parking + GENERER placeS
+// AJOUTER parking + GENERER places
 app.post('/api/admin/parking', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
-    // ðŸ”´ CORRECTION ICI : On ajoute latitude, longitude et image_url dans la rÃ©cupÃ©ration
+    // CORRECTION ICI : On ajoute latitude, longitude et image_url dans la récupération
     const { 
         nom, 
         adresse, 
         tarif_heure, 
         nb_rangees, 
         nb_places_par_rangee, 
-        latitude,   // <--- AjoutÃ©
-        longitude,  // <--- AjoutÃ©
-        image_url   // <--- AjoutÃ© (le front envoie souvent image_url, pas image)
+        latitude,   // <--- Ajouté
+        longitude,  // <--- Ajouté
+        image_url   // <--- Ajouté (le front envoie souvent image_url, pas image)
     } = req.body;
 
     const id_gest = req.auth.userId;
     
-    // DEBUG: On log tout le body pour Ãªtre sÃ»r
-    console.log("ðŸ“¥ DONNÃ‰ES REÃ‡UES COMPLÃˆTES :", req.body); 
+    // DEBUG: On log tout le body pour être sûr
+    console.log("DONNÉES REÇUES COMPLÈTES :", req.body); 
 
-    // Validation des donnÃ©es (Ajoutez latitude/longitude si obligatoire)
+    // Validation des données (Ajoutez latitude/longitude si obligatoire)
     if (!nom || !adresse || !tarif_heure) {
-        return res.status(400).json({ message: "Champs obligatoires manquants" });
+        return res.status(400).json({ message: "Champs obligatoires manquants." });
     }
 
     const connection = await db.getConnection(); 
     try {
         await connection.beginTransaction();
 
-        // ðŸ”´ CORRECTION DANS LA REQUÃŠTE SQL
+        // CORRECTION DANS LA REQUÊTE SQL
         // On mappe 'image_url' (du front) vers la colonne 'image' (de la BDD)
         const [result] = await connection.query(
             "INSERT INTO parking (nom, adresse, tarif_heure, image, latitude, longitude, nb_rangees, nb_places_par_rangee, id_gest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -282,16 +282,16 @@ app.post('/api/admin/parking', authMiddleware, roleMiddleware(['gestionnaire']),
                 nom, 
                 adresse, 
                 tarif_heure,
-                image_url ?? null, // Garder null si non dÃ©fini
-                latitude ?? null,  // Garder null si non dÃ©fini
-                longitude ?? null, // Garder null si non dÃ©fini
+                image_url ?? null, // Garder null si non défini
+                latitude ?? null,  // Garder null si non défini
+                longitude ?? null, // Garder null si non défini
                 nb_rangees || 0, 
                 nb_places_par_rangee || 0, 
                 id_gest
             ]
         );
         
-        // GÃ©nÃ©rer les places
+        // Générer les places
         const places = [];
         for (let rangee = 1; rangee <= nb_rangees; rangee++) {
             for (let place = 1; place <= nb_places_par_rangee; place++) {
@@ -311,40 +311,50 @@ app.post('/api/admin/parking', authMiddleware, roleMiddleware(['gestionnaire']),
         }
 
         await connection.commit();
-        res.status(201).json({ message: "âœ… parking crÃ©Ã© avec succÃ¨s !", id_parking: result.insertId });
+        res.status(201).json({ message: "Parking créé avec succès !", id_parking: result.insertId });
     } catch (error) {
         await connection.rollback();
-        console.error("âŒ Erreur crÃ©ation parking :", error);
-        res.status(500).json({ error: "Erreur lors de la crÃ©ation du parking" });
+        console.error("Erreur création parking :", error);
+        res.status(500).json({ error: "Erreur lors de la création du parking" });
     } finally {
         connection.release();
     }
 });
 
-// LISTER MES parkingS (gestionnaire) - C'est la route qui te manquait !
-app.get('/api/my-parkings/:id', async (req, res) => {
+// LISTER MES parkings (gestionnaire) - Route sécurisée
+app.get('/api/my-parkings', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     try {
-        const idGest = req.params.id;
+        // On récupère l'ID du gestionnaire depuis le token, pas de l'URL. C'est plus sécurisé.
+        const idGest = req.auth.userId;
         const [results] = await db.query("SELECT * FROM parking WHERE id_gest = ?", [idGest]);
         res.status(200).json(results);
     } catch (error) {
-        console.error("Erreur rÃ©cupÃ©ration mes parkings:", error);
-        res.status(500).json({ error: "Erreur base de donnÃ©es" });
+        console.error("Erreur récupération mes parkings:", error);
+        res.status(500).json({ error: "Erreur base de données" });
     }
 });
 
-// 1. SUPPRIMER UN parking (CORRIGÃ‰ AVEC paiementS ET avis)
+// 1. SUPPRIMER UN parking (CORRIGÉ AVEC paiements ET avis)
 app.delete('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     const id = req.params.id;
-    const id_gest = req.auth.userId;
-
-    // TODO: Ajouter une vÃ©rification pour s'assurer que le gestionnaire est bien le propriÃ©taire du parking
-    // const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ?", [id]);
+    const id_gest_token = req.auth.userId;
     
     try {
+        // VÉRIFICATION DE PROPRIÉTÉ : On s'assure que le parking appartient bien au gestionnaire qui fait la demande.
+        const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ?", [id]);
+
+        if (parking.length === 0) {
+            return res.status(404).json({ error: "Parking introuvable." });
+        }
+
+        if (parking[0].id_gest !== id_gest_token) {
+            // Ce n'est pas son parking, on refuse l'accès.
+            return res.status(403).json({ error: "Accès refusé. Vous n'êtes pas le propriétaire de ce parking." });
+        }
+
         console.log(`Tentative de suppression du parking ${id}...`);
 
-        // Ã‰TAPE 1 : Supprimer les paiementS liÃ©s aux rÃ©servations de ce parking
+        // ÉTAPE 1 : Supprimer les paiements liés aux réservations de ce parking
         await db.query(`
             DELETE FROM paiement 
             WHERE id_resa IN (
@@ -353,50 +363,54 @@ app.delete('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire'])
             )
         `, [id]);
 
-        // Ã‰TAPE 2 : Supprimer les RÃ‰SERVATIONS liÃ©es aux places de ce parking
+        // ÉTAPE 2 : Supprimer les RÉSERVATIONS liées aux places de ce parking
         await db.query(`
             DELETE FROM reservation 
             WHERE id_place IN (SELECT id_place FROM place WHERE id_park = ?)
         `, [id]);
 
-        // Ã‰TAPE 3 : Supprimer les placeS de ce parking
+        // ÉTAPE 3 : Supprimer les places de ce parking
         await db.query("DELETE FROM place WHERE id_park = ?", [id]);
 
-        // Ã‰TAPE 4 (NOUVELLE) : Supprimer les avis liÃ©s Ã  ce parking
+        // ÉTAPE 4 (NOUVELLE) : Supprimer les avis liés à ce parking
         await db.query("DELETE FROM avis WHERE id_park = ?", [id]);
 
-        // Ã‰TAPE 5 : Enfin, supprimer le parking
+        // ÉTAPE 5 : Enfin, supprimer le parking
         const [result] = await db.query("DELETE FROM parking WHERE id_park = ?", [id]);
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ error: "parking introuvable." });
+            return res.status(404).json({ error: "Parking introuvable." });
         }
 
-        console.log("âœ… parking, places, rÃ©servations, paiements et avis supprimÃ©s avec succÃ¨s !");
-        res.json({ message: "parking et toutes ses donnÃ©es supprimÃ©s avec succÃ¨s !" });
+        console.log("parking, places, réservations, paiements et avis supprimés avec succès !");
+        res.json({ message: "parking et toutes ses données supprimés avec succès !" });
 
     } catch (error) {
-        console.error("âŒ Erreur SQL lors de la suppression :", error);
-        res.status(500).json({ error: "Erreur interne (voir terminal pour dÃ©tails)" });
+        console.error("Erreur SQL lors de la suppression :", error);
+        res.status(500).json({ error: "Erreur interne (voir terminal pour détails)" });
     }
 });
-// --- Route pour MODIFIER un parking (SÃ©curisÃ©e) ---
-// J'ai ajoutÃ© 'authMiddleware' ici pour protÃ©ger la route
+// --- Route pour MODIFIER un parking (Sécurisée) ---
+// J'ai ajouté 'authMiddleware' ici pour protéger la route
 app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     const id = req.params.id;
     const id_gest = req.auth.userId;
-    // 1. On ne rÃ©cupÃ¨re PLUS nb_rangees et nb_places_par_rangee
+    // 1. On ne récupère PLUS nb_rangees et nb_places_par_rangee
     const { nom, adresse, tarif_heure } = req.body;
 
-    // TODO: Ajouter une vÃ©rification pour s'assurer que le gestionnaire est bien le propriÃ©taire du parking
-    // const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ? AND id_gest = ?", [id, id_gest]);
-
-    console.log(`ðŸ“¡ MODIFICATION parking ${id}`);
+    console.log(`MODIFICATION parking ${id}`);
 
     const tarif = parseFloat(tarif_heure);
 
     try {
-        // 2. On met Ã  jour uniquement le nom, l'adresse et le tarif
+        // VÉRIFICATION DE PROPRIÉTÉ
+        const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ? AND id_gest = ?", [id, id_gest]);
+
+        if (parking.length === 0) {
+            return res.status(403).json({ error: "Accès refusé ou parking introuvable." });
+        }
+
+        // 2. On met à jour uniquement le nom, l'adresse et le tarif
         const sql = `
             UPDATE parking 
             SET nom = ?, 
@@ -407,19 +421,19 @@ app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), a
         const [result] = await db.query(sql, [nom, adresse, tarif, id]);
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ error: "parking introuvable (ID incorrect)" });
+            return res.status(404).json({ error: "Parking introuvable (ID incorrect)" });
         }
 
-        res.json({ message: "âœ… parking modifiÃ© avec succÃ¨s" });
+        res.json({ message: "Parking modifié avec succès" });
 
     } catch (error) {
-        console.error("âŒ Erreur SQL Update :", error);
+        console.error("Erreur SQL Update :", error);
         res.status(500).json({ error: "Erreur serveur lors de la modification" });
     }
 });
 // MISE Ã€ JOUR PROFIL gestionnaire (CORRIGÃ‰E)
 app.put('/api/manager/update', authMiddleware, roleMiddleware(['gestionnaire']), upload.single('image'), async (req, res) => {
-    console.log("ðŸ“ Update Profil demandÃ©...");
+    console.log("Update Profil demandé...");
 
     const id_user = req.auth.userId;
     const { nom, email } = req.body; 
@@ -445,10 +459,10 @@ app.put('/api/manager/update', authMiddleware, roleMiddleware(['gestionnaire']),
 
         if (result.affectedRows === 0) return res.status(404).json({ message: "Utilisateur non trouvÃ©" });
 
-        res.json({ message: "Mise Ã  jour rÃ©ussie", newImage: newPhotoPath });
+        res.json({ message: "Mise à jour réussie", newImage: newPhotoPath });
 
     } catch (error) {
-        console.error("âŒ Erreur Update Profil:", error);
+        console.error("Erreur Update Profil:", error);
         res.status(500).json({ error: "Erreur base de donnÃ©es" });
     }
 });
@@ -459,7 +473,7 @@ app.get('/api/parkings', async (req, res) => {
         const [rows] = await db.query("SELECT * FROM parking");
         res.json(rows);
     } catch (error) {
-        console.error("Erreur rÃ©cupÃ©ration tous les parkings :", error);
+        console.error("Erreur récupération tous les parkings :", error);
         res.status(500).json({ error: "Erreur serveur" });
     }
 });
@@ -467,13 +481,13 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ==========================================
 // ROUTE : MISE Ã€ JOUR PROFIL 
 // ==========================================
-app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req, res) => {
-    console.log("ðŸ“ Demande de mise Ã  jour profil reÃ§ue...");
+app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req, res) => { // TODO: This seems to duplicate PUT /api/manager/update
+    console.log("Demande de mise à jour profil reçue...");
 
     const userId = req.auth.userId; 
     const userRole = req.auth.role; // 'conducteur' ou 'gestionnaire'
 
-    // 1. On rÃ©cupÃ¨re TOUS les champs (nom, prenom, email)
+    // 1. On récupère TOUS les champs (nom, prenom, email)
     const { nom, prenom, email } = req.body;
     
     // Chemin image
@@ -483,9 +497,9 @@ app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req,
         let sql;
         let params;
         
-        // --- LOGIQUE SPÃ‰CIFIQUE conducteur (Avec PrÃ©nom) ---
+        // --- LOGIQUE SPÉCIFIQUE conducteur (Avec Prénom) ---
         if (userRole === 'conducteur' || userRole === 'client') { 
-            // Note: VÃ©rifiez si votre rÃ´le s'appelle 'conducteur' ou 'client' dans le token
+            // Note: Vérifiez si votre rôle s'appelle 'conducteur' ou 'client' dans le token
             
             let querySet = "UPDATE conducteur SET nom=?, prenom=?, email=?";
             let queryParams = [nom, prenom, email];
@@ -498,7 +512,7 @@ app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req,
             sql = `${querySet} WHERE id_cond=?`;
             params = [...queryParams, userId];
         } 
-        // --- LOGIQUE gestionnaire (Sans PrÃ©nom, si applicable) ---
+        // --- LOGIQUE gestionnaire (Sans Prénom, si applicable) ---
         else {
             let querySet = "UPDATE gestionnaire SET nom=?, email=?";
             let queryParams = [nom, email];
@@ -518,44 +532,44 @@ app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req,
             return res.status(404).json({ message: "Utilisateur introuvable." });
         }
 
-        console.log(`âœ… Profil ${userRole} mis Ã  jour avec succÃ¨s !`);
+        console.log(`Profil ${userRole} mis à jour avec succès !`);
         
         res.json({ 
-            message: "Mise Ã  jour rÃ©ussie", 
+            message: "Mise à jour réussie", 
             photo: newPhotoPath,
             user: { nom, prenom, email }
         });
 
     } catch (error) {
-        console.error("âŒ Erreur Update Profil:", error);
-        res.status(500).json({ error: "Erreur base de donnÃ©es", details: error.message });
+        console.error("Erreur Update Profil:", error);
+        res.status(500).json({ error: "Erreur base de données", details: error.message });
     }
 });
 // ==========================================
-// 5. ROUTES CLIENT (MAP & reservation)
+// 5. ROUTES CLIENT (MAP & réservation)
 // ==========================================
 
-// RÃ©cupÃ©rer la MAP (Configuration + Ã‰tat des places)
+// Récupérer la MAP (Configuration + État des places)
 app.get('/api/parking-map/:id', async (req, res) => {
     try {
         const parkingId = req.params.id;
 
-        // 1. RÃ©cupÃ©rer config
+        // 1. Récupérer config
         const [parkingInfo] = await db.query(
-            "SELECT nb_rangees, nb_places_par_rangee FROM parking WHERE id_park = ?", // VÃ©rifie si c'est 'id' ou 'id_park' dans ta base
+            "SELECT nb_rangees, nb_places_par_rangee FROM parking WHERE id_park = ?", // Vérifie si c'est 'id' ou 'id_park' dans ta base
             [parkingId]
         );
 
         if (parkingInfo.length === 0) return res.status(404).json({message: "parking introuvable"});
 
-        // 2. RÃ©cupÃ©rer places + statuts
+        // 2. Récupérer places + statuts
         const query = `
             SELECT 
                 p.id_place, 
                 p.numero, 
                 CASE 
                     WHEN r.id_resa IS NOT NULL THEN 'occupÃ©' 
-                    ELSE 'libre' 
+                    ELSE 'libre'
                 END as statut_actuel
             FROM place p
             LEFT JOIN reservation r ON p.id_place = r.id_place AND r.date_depart IS NULL
@@ -582,28 +596,28 @@ app.get('/api/places/:id_park', async (req, res) => {
         const [rows] = await db.query("SELECT * FROM place WHERE id_park = ? ORDER BY id_place ASC", [id]);
         res.json(rows);
     } catch (err) {
-        console.error("Erreur rÃ©cupÃ©ration places:", err);
+        console.error("Erreur récupération places:", err);
         res.status(500).json({ error: "Erreur serveur" });
     }
 });
 
-// DÃ©marrer une rÃ©servation (Client)
+// Démarrer une réservation (Client)
 app.post('/api/reservation/start', authMiddleware, roleMiddleware(['conducteur']), async (req, res) => {
     const { id_place } = req.body;
     const id_cond = req.auth.userId; 
 
     try {
-        // 1. VÃ©rifier si le conducteur a DÃ‰JÃ€ une rÃ©servation active
+        // 1. Vérifier si le conducteur a DÉJÀ une réservation active
         const [activeRes] = await db.query(
             'SELECT * FROM reservation WHERE id_cond = ? AND date_depart IS NULL',
             [id_cond]
         );
 
         if (activeRes.length > 0) {
-            return res.status(400).json({ message: "Vous avez dÃ©jÃ  une rÃ©servation en cours." });
+            return res.status(400).json({ message: "Vous avez déjà une réservation en cours." });
         }
 
-        // 2. VÃ©rifier si la place est libre et rÃ©cupÃ©rer l'ID du parking
+        // 2. Vérifier si la place est libre et récupérer l'ID du parking
         // CORRECTION : On utilise 'disponibilite' (pas 'statu')
         const [placeStatus] = await db.query(
             'SELECT disponibilite, id_park FROM place WHERE id_place = ?', 
@@ -611,35 +625,35 @@ app.post('/api/reservation/start', authMiddleware, roleMiddleware(['conducteur']
         );
 
         if (placeStatus.length === 0) {
-            return res.status(404).json({ message: "place introuvable." });
+            return res.status(404).json({ message: "Place introuvable." });
         }
 
-        // Si disponibilite == 0, c'est occupÃ© (selon ta logique ailleurs dans le code)
+        // Si disponibilite == 0, c'est occupé (selon ta logique ailleurs dans le code)
         if (placeStatus[0].disponibilite == 0) {
-            return res.status(400).json({ message: "Cette place est dÃ©jÃ  occupÃ©e." });
+            return res.status(400).json({ message: "Cette place est déjà occupée." });
         }
 
         const id_park = placeStatus[0].id_park;
 
-        // 3. CrÃ©er la rÃ©servation
+        // 3. Créer la réservation
         const [result] = await db.query(
             'INSERT INTO reservation (date_arrivee, id_cond, id_place) VALUES (NOW(), ?, ?)',
             [id_cond, id_place]
         );
 
-        // 4. Mettre la place en 'occupÃ©'
-        // CORRECTION : On met 'disponibilite' Ã  0
+        // 4. Mettre la place en 'occupé'
+        // CORRECTION : On met 'disponibilite' à 0
         await db.query('UPDATE place SET disponibilite = 0 WHERE id_place = ?', [id_place]);
 
         res.json({ 
-            message: "RÃ©servation dÃ©marrÃ©e !", 
+            message: "Réservation démarrée !", 
             id_res: result.insertId,
             place: id_place
         });
 
     } catch (err) {
-        console.error("Erreur reservation Start :", err); // Le log sera plus prÃ©cis
-        res.status(500).json({ message: "Erreur serveur lors de la rÃ©servation." });
+        console.error("Erreur reservation Start :", err); // Le log sera plus précis
+        res.status(500).json({ message: "Erreur serveur lors de la réservation." });
     }
 });
 // ==========================================
@@ -657,33 +671,33 @@ app.get('/api/reservation/active', authMiddleware, async (req, res) => {
         if (rows.length > 0) {
             res.json(rows[0]);
         } else {
-            // Important : Renvoyer 404 est normal si pas de rÃ©servation, le front le gÃ¨re
-            res.status(404).json({ message: "Aucune rÃ©servation active" });
+            // Important : Renvoyer 404 est normal si pas de réservation, le front le gère
+            res.status(404).json({ message: "Aucune réservation active" });
         }
     } catch (err) {
         console.error("Erreur Active Resa:", err.message);
-        // On renvoie 404 pour ne pas bloquer le front s'il y a un souci technique
-        res.status(404).send("Erreur ou pas de rÃ©servation");
+        // On renvoie 404 pour ne pas bloquer le front en cas de souci
+        res.status(404).send("Erreur ou pas de réservation");
     }
 });
 // ==========================================
-//  STOP reservation + LIBÃ‰RATION place
+//  STOP reservation + LIBÉRATION place
 // ==========================================
 app.post('/api/reservation/stop', async (req, res) => {
     const { id_resa } = req.body;
 
-    console.log("ðŸ›‘ Tentative d'arrÃªt rÃ©servation ID :", id_resa);
+    console.log("Tentative d'arrêt réservation ID :", id_resa);
 
     if (!id_resa) {
-        return res.status(400).json({ error: "ID rÃ©servation manquant" });
+        return res.status(400).json({ error: "ID de réservation manquant" });
     }
 
-    const connection = await db.getConnection(); // On prend une connexion dÃ©diÃ©e pour la transaction
+    const connection = await db.getConnection(); // On prend une connexion dédiée pour la transaction
 
     try {
-        await connection.beginTransaction(); // DÃ©but transaction (sÃ©curitÃ©)
+        await connection.beginTransaction(); // Début transaction (sécurité)
 
-        // 1. RÃ©cupÃ©rer les infos de la rÃ©servation (Date dÃ©but + ID place)
+        // 1. Récupérer les infos de la réservation (Date début + ID place)
         const [rows] = await connection.query(
             "SELECT * FROM reservation WHERE id_resa = ?", 
             [id_resa]
@@ -691,45 +705,52 @@ app.post('/api/reservation/stop', async (req, res) => {
 
         if (rows.length === 0) {
             await connection.rollback();
-            return res.status(404).json({ error: "RÃ©servation introuvable" });
+            return res.status(404).json({ error: "Réservation introuvable" });
         }
 
         const resa = rows[0];
 
-        // VÃ©rification si dÃ©jÃ  terminÃ©e
+        // Vérification si déjà terminée
         if (resa.date_depart !== null) {
             await connection.rollback();
-            return res.status(400).json({ message: "Cette rÃ©servation est dÃ©jÃ  terminÃ©e." });
+            return res.status(400).json({ message: "Cette réservation est déjà terminée." });
         }
 
         // 2. Calcul du prix
         const dateDebut = new Date(resa.date_arrivee);
         const dateFin = new Date();
         
-        // Calcul durÃ©e en millisecondes
+        // Calcul durée en millisecondes
         let diffMs = dateFin - dateDebut;
         if (diffMs < 0) diffMs = 0; 
 
-        // Conversion en heures (arrondi supÃ©rieur)
+        // Conversion en heures (arrondi supérieur)
         const diffSeconds = Math.floor(diffMs / 1000);
         const hours = Math.ceil(diffSeconds / 3600); // Ex: 1h05 = 2h payantes
         const minutes = Math.floor((diffSeconds % 3600) / 60);
 
-        // Tarif fixe ou rÃ©cupÃ©rÃ© du parking (ici je mets ton calcul hardcodÃ© 4.00 DH/h)
-        // IdÃ©alement, il faudrait faire une jointure avec parking pour avoir le vrai tarif_heure
-        const tarifHoraire = 4.00; 
-        const montant = (Math.max(1, hours) * tarifHoraire).toFixed(2); // Minimum 1h facturÃ©e
+        // RÉCUPÉRATION DU VRAI TARIF HORAIRE
+        const [parking] = await connection.query(
+            `SELECT p.tarif_heure FROM parking p 
+             JOIN place pl ON p.id_park = pl.id_park 
+             WHERE pl.id_place = ?`,
+            [resa.id_place]
+        );
 
-        console.log(`ðŸ’° Calcul: ${hours}h * ${tarifHoraire} = ${montant} DH`);
+        // Utilise le tarif du parking, ou 4.00 comme valeur par défaut si non trouvé
+        const tarifHoraire = parking.length > 0 ? parking[0].tarif_heure : 4.00;
+        const montant = (Math.max(1, hours) * tarifHoraire).toFixed(2); // Minimum 1h facturée
 
-        // 3. Mettre Ã  jour la RÃ©servation (Date fin + Prix)
+        console.log(`Calcul: ${hours}h * ${tarifHoraire}DH/h = ${montant} DH`);
+
+        // 3. Mettre à jour la Réservation (Date fin + Prix)
         await connection.query(
             "UPDATE reservation SET date_depart = ?, prix_total = ? WHERE id_resa = ?",
             [dateFin, montant, id_resa]
         );
 
-        // 4. LIBÃ‰RER LA place (C'Ã©tait l'oubli critique !)
-        // On remet disponibilite Ã  1 (Libre)
+        // 4. LIBÉRER LA place (C'était l'oubli critique !)
+        // On remet disponibilite à 1 (Libre)
         await connection.query(
             "UPDATE place SET disponibilite = 1 WHERE id_place = ?",
             [resa.id_place]
@@ -738,7 +759,7 @@ app.post('/api/reservation/stop', async (req, res) => {
         await connection.commit(); // Valider tout
         connection.release();
 
-        console.log("âœ… RÃ©servation terminÃ©e et place libÃ©rÃ©e.");
+        console.log("Réservation terminée et place libérée.");
 
         res.json({
             success: true,
@@ -751,20 +772,21 @@ app.post('/api/reservation/stop', async (req, res) => {
     } catch (error) {
         await connection.rollback(); // Annuler si erreur
         connection.release();
-        console.error("âŒ Erreur Stop RÃ©servation :", error);
-        res.status(500).json({ error: "Erreur serveur lors de l'arrÃªt" });
+        console.error("Erreur Stop Réservation:", error);
+        res.status(500).json({ error: "Erreur serveur lors de l'arrêt" });
     }
 });
-// CONFIRMATION paiement + CLÃ”TURE RÃ‰SERVATION + LIBÃ‰RATION place
-app.post('/api/paiement/confirm', async (req, res) => {
-    console.log("ðŸ’³ Validation finale du paiement...");
+// CONFIRMATION paiement + CLÔTURE RÉSERVATION + LIBÉRATION place
+app.post('/api/paiement/confirm', authMiddleware, async (req, res) => {
+    console.log("Validation finale du paiement...");
     const { id_resa, montant, mode } = req.body;
 
     if (!id_resa || !montant) {
-        return res.status(400).json({ success: false, message: "DonnÃ©es manquantes." });
+        return res.status(400).json({ success: false, message: "Données manquantes." });
     }
 
     try {
+        // TODO: Ajouter une vérification que l'utilisateur authentifié (req.auth.userId) est bien celui qui a fait la réservation
         const datepaiement = new Date();
 
         // 1. Enregistrer le paiement
@@ -773,15 +795,15 @@ app.post('/api/paiement/confirm', async (req, res) => {
             [id_resa, montant, datepaiement, mode]
         );
 
-        // 2. Mettre Ã  jour la RÃ‰SERVATION (Date de fin et Prix final)
+        // 2. Mettre à jour la RÉSERVATION (Date de fin et Prix final)
         // NOW() permet d'avoir l'heure exacte du serveur SQL
         await db.query(
             "UPDATE reservation SET date_depart = NOW(), prix_total = ? WHERE id_resa = ?",
             [montant, id_resa]
         );
 
-        // 3. LibÃ©rer la place (Remettre disponibilite Ã  1)
-        // On cherche d'abord quelle place correspond Ã  cette rÃ©servation
+        // 3. Libérer la place (Remettre disponibilite à 1)
+        // On cherche d'abord quelle place correspond à cette réservation
         await db.query(
             `UPDATE place 
              JOIN reservation ON place.id_place = reservation.id_place 
@@ -790,22 +812,22 @@ app.post('/api/paiement/confirm', async (req, res) => {
             [id_resa]
         );
 
-        console.log("âœ… Cycle complet terminÃ© : PayÃ©, FermÃ©, LibÃ©rÃ©.");
-        res.json({ success: true, message: "paiement validÃ© et rÃ©servation clÃ´turÃ©e !" });
+        console.log("Cycle complet terminé : Payé, Fermé, Libéré.");
+        res.json({ success: true, message: "Paiement validé et réservation clôturée !" });
 
     } catch (err) {
-        console.error("âŒ Erreur SQL Finale :", err);
+        console.error("Erreur SQL Finale :", err);
         res.status(500).json({ success: false, message: "Erreur serveur", details: err.sqlMessage });
     }
 });
 // ==========================================
-// ROUTE : Historique Visuel (SÃ‰CURISÃ‰E ðŸ”’)
+// ROUTE : Historique Visuel (SÉCURISÉE)
 // ==========================================
-// 1. On ajoute 'authMiddleware' pour forcer la vÃ©rification du Token
+// 1. On ajoute 'authMiddleware' pour forcer la vérification du Token
 app.get('/api/reservations/history', authMiddleware, async (req, res) => {
     
     // 2. LE SECRET EST ICI : On ignore req.params.id (l'URL)
-    // On prend l'ID directement depuis le token de la personne connectÃ©e !
+    // On prend l'ID directement depuis le token de la personne connectée !
     const idconducteur = req.auth.userId; 
 
     try {
@@ -832,46 +854,46 @@ app.get('/api/reservations/history', authMiddleware, async (req, res) => {
         res.json(results);
 
     } catch (err) {
-        console.error("âŒ Erreur historique :", err);
-        res.status(500).json({ error: "Erreur serveur lors de la rÃ©cupÃ©ration de l'historique" });
+        console.error("Erreur historique :", err);
+        res.status(500).json({ error: "Erreur serveur lors de la récupération de l'historique" });
     }
 });
-app.get('/api/notifications/:id_cond', async (req, res) => {
+
+// Route sécurisée pour récupérer les notifications de l'utilisateur connecté
+app.get('/api/notifications', authMiddleware, async (req, res) => {
     try {
-        console.log("--- NOUVEAU TEST (VERSION ASYNC) ---");
-        const id_cond = req.params.id_cond;
+        const id_cond = req.auth.userId; // ID sécurisé depuis le token
         const sql = "SELECT * FROM notification WHERE id_cond = ? ORDER BY date_notif DESC";
         
-        console.log("1. Lancement de la requÃªte...");
-        
-        // On utilise "await" pour forcer Node.js Ã  attendre la rÃ©ponse de MySQL
+        console.log(`Récupération des notifications pour l'utilisateur ${id_cond}`);
         const [results] = await db.query(sql, [id_cond]);
         
-        console.log("2. SUCCÃˆS ! Voici les donnÃ©es :", results);
         res.status(200).json(results);
         
     } catch (err) {
         console.error("ERREUR SQL :", err);
-        res.status(500).json({ erreur: "Erreur serveur" });
+        res.status(500).json({ error: "Erreur serveur" });
     }
 });
 
-app.put('/api/notifications/marquer-lu/:id_notif', async (req, res) => {
+// Route sécurisée pour marquer une notification comme lue
+app.put('/api/notifications/marquer-lu/:id_notif', authMiddleware, async (req, res) => {
     try {
         const id_notif = req.params.id_notif;
+        // TODO: Ajouter une vérification que la notification appartient bien à l'utilisateur (req.auth.userId)
         const sql = "UPDATE notification SET lu = 1 WHERE id_notif = ?";
         await db.query(sql, [id_notif]);
-        res.status(200).json({ message: "notification lue avec succÃ¨s" });
+        res.status(200).json({ message: "Notification lue avec succès" });
     } catch (err) {
         console.error("ERREUR SQL PUT :", err);
-        res.status(500).json({ erreur: "Erreur serveur" });
+        res.status(500).json({ error: "Erreur serveur" });
     }
 });
 // ==========================================
 // ROUTE MANAGER : TOUTES LES RÃ‰SERVATIONS
 // ==========================================
 app.get('/api/manager/reservations', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
-    // On utilise l'ID du token pour sÃ©curiser la route
+    // On utilise l'ID du token pour sécuriser la route
     const idGest = req.auth.userId;
 
     try {
@@ -885,7 +907,7 @@ app.get('/api/manager/reservations', authMiddleware, roleMiddleware(['gestionnai
                 r.prix_total as montant_total,
                 CASE 
                     WHEN r.date_depart IS NULL THEN 'En cours' 
-                    ELSE 'TerminÃ©' 
+                    ELSE 'Terminé' 
                 END as statut
             FROM reservation r
             JOIN place pl ON r.id_place = pl.id_place
@@ -907,7 +929,7 @@ app.get('/api/manager/reservations', authMiddleware, roleMiddleware(['gestionnai
 // ROUTE MANAGER : REVENUS (paiementS)
 // ==========================================
 app.get('/api/manager/earnings', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
-    // On utilise l'ID du token pour sÃ©curiser la route
+    // On utilise l'ID du token pour sécuriser la route
     const idGest = req.auth.userId;
 
     try {
@@ -922,7 +944,7 @@ app.get('/api/manager/earnings', authMiddleware, roleMiddleware(['gestionnaire']
             JOIN reservation r ON pay.id_resa = r.id_resa
             JOIN place pl ON r.id_place = pl.id_place
             JOIN parking pk ON pl.id_park = pk.id_park
-            JOIN conducteur c ON r.id_cond = c.id_cond  -- âœ… La jointure manquante
+            JOIN conducteur c ON r.id_cond = c.id_cond  -- La jointure manquante
             WHERE pk.id_gest = ?
             ORDER BY pay.date DESC
         `;
@@ -958,16 +980,17 @@ app.get('/api/parkings/:id/reviews', async (req, res) => {
     }
 });
 
-// ROUTE : Ajouter un avis (CorrigÃ©e)
-app.post('/api/reviews', async (req, res) => {
-    // On rÃ©cupÃ¨re les donnÃ©es envoyÃ©es par React
-    // Note : React envoie "commentaire", mais votre base semble attendre "message"
-    const { id_park, id_user, note, commentaire } = req.body; 
+// ROUTE : Ajouter un avis (Corrigée)
+app.post('/api/reviews', authMiddleware, roleMiddleware(['conducteur']), async (req, res) => {
+    // On récupère les données envoyées par React
+    const { id_park, note, commentaire } = req.body; 
+    // On utilise l'ID de l'utilisateur authentifié, pas celui envoyé par le client. C'est plus sûr.
+    const id_user = req.auth.userId;
 
-    console.log("Tentative d'ajout d'avis :", { id_park, id_user, note, commentaire });
+    console.log("Tentative d'ajout d'avis :", { id_park, id_user: id_user, note, commentaire });
 
     try {
-        // Ã‰TAPE 1 : Trouver l'ID du gestionnaire (id_gest) qui possÃ¨de ce parking
+        // ÉTAPE 1 : Trouver l'ID du gestionnaire (id_gest) qui possède ce parking
         const sqlGetGest = "SELECT id_gest FROM parking WHERE id_park = ?";
         const [rows] = await db.query(sqlGetGest, [id_park]);
 
@@ -975,9 +998,9 @@ app.post('/api/reviews', async (req, res) => {
             return res.status(404).json({ message: "parking introuvable, impossible d'ajouter l'avis." });
         }
 
-        const id_gest = rows[0].id_gest; // On a trouvÃ© le gestionnaire !
+        const id_gest = rows[0].id_gest; // On a trouvé le gestionnaire !
 
-        // Ã‰TAPE 2 : InsÃ©rer l'avis avec TOUTES les infos (y compris id_gest)
+        // ÉTAPE 2 : Insérer l'avis avec TOUTES les infos (y compris id_gest)
         // Attention : J'utilise 'message' car votre log montrait que la colonne s'appelle ainsi.
         const sqlInsert = `
             INSERT INTO avis (id_park, id_cond, id_gest, note, message, date_avis) 
@@ -986,10 +1009,10 @@ app.post('/api/reviews', async (req, res) => {
 
         await db.query(sqlInsert, [id_park, id_user, id_gest, note, commentaire]);
 
-        res.status(201).json({ message: "avis ajoutÃ© avec succÃ¨s !" });
+        res.status(201).json({ message: "Avis ajouté avec succès !" });
 
     } catch (err) {
-        console.error("âŒ Erreur ajout avis:", err);
+        console.error("Erreur ajout avis:", err);
         res.status(500).json({ 
             message: "Erreur serveur lors de l'ajout de l'avis",
             details: err.message 
@@ -998,12 +1021,12 @@ app.post('/api/reviews', async (req, res) => {
 });
 
 // =========================================================
-// ðŸ¤– TÃ‚CHE PLANIFIÃ‰E : RAPPEL DES 1 MINUTES + FIREBASE (FINAL)
+// TÂCHE PLANIFIÉE : RAPPEL DES 1 MINUTES + FIREBASE (FINAL)
 // =========================================================
 
 cron.schedule('* * * * *', async () => {
     try {
-        // NOUVEAUTÃ‰ : On fait une JOINTURE (JOIN) pour rÃ©cupÃ©rer le fcm_token du conducteur !
+        // NOUVEAUTÉ : On fait une JOINTURE (JOIN) pour récupérer le fcm_token du conducteur !
         const querySelect = `
             SELECT r.id_resa, r.id_cond, r.date_arrivee, c.fcm_token 
             FROM reservation r
@@ -1016,41 +1039,41 @@ cron.schedule('* * * * *', async () => {
 
         for (const resa of reservations) {
             const titre = "Rappel de stationnement â±ï¸";
-            const message = `Attention : Cela fait plus de 1 minute que votre stationnement (RÃ©servation nÂ°${resa.id_resa}) a commencÃ©.`;
+            const message = `Attention : Cela fait plus de 1 minute que votre stationnement (Réservation n°${resa.id_resa}) a commencé.`;
 
             const checkNotifQuery = `SELECT id_notif FROM notification WHERE id_cond = ? AND message = ?`;
             const [notifs] = await db.query(checkNotifQuery, [resa.id_cond, message]);
 
             if (notifs.length === 0) {
-                // 1. Sauvegarder dans la base de donnÃ©es
+                // 1. Sauvegarder dans la base de données
                 const insertQuery = `INSERT INTO notification (id_cond, titre, message, lu) VALUES (?, ?, ?, 0)`;
                 await db.query(insertQuery, [resa.id_cond, titre, message]);
-                console.log(`âœ… [CRON] notification BDD enregistrÃ©e (RÃ©servation nÂ°${resa.id_resa})`);
+                console.log(`[CRON] notification BDD enregistrée (Réservation n°${resa.id_resa})`);
 
-                // 2. FIREBASE : ENVOYER LA notification PUSH AU TÃ‰LÃ‰PHONE !
+                // 2. FIREBASE : ENVOYER LA notification PUSH AU TÉLÉPHONE !
                 if (resa.fcm_token) {
                     const payload = {
                         notification: { 
                             title: titre, 
                             body: message 
                         },
-                        token: resa.fcm_token // On utilise le Token qu'on a rÃ©cupÃ©rÃ© de la BDD !
+                        token: resa.fcm_token // On utilise le Token qu'on a récupéré de la BDD !
                     };
                     
                     try {
                         await admin.messaging().send(payload);
-                        console.log(`ðŸ“² notification Push envoyÃ©e au tÃ©lÃ©phone du client ${resa.id_cond} !`);
+                        console.log(`notification Push envoyée au téléphone du client ${resa.id_cond} !`);
                     } catch (pushError) {
-                        console.error(`âŒ Erreur Push Firebase pour le client ${resa.id_cond} :`, pushError.message);
+                        console.error(`Erreur Push Firebase pour le client ${resa.id_cond} :`, pushError.message);
                     }
                 } else {
-                    console.log(`âš ï¸ Client ${resa.id_cond} n'a pas de Token FCM. notification push ignorÃ©e.`);
+                    console.log(`Client ${resa.id_cond} n'a pas de Token FCM. Notification push ignorée.`);
                 }
             }
         }
 
     } catch (error) {
-        console.error("ðŸš¨ [CRON] Erreur :", error);
+        console.error("[CRON] Erreur :", error);
     }
 });
 // ==========================================
@@ -1065,7 +1088,7 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
 
     try {
         let sql = "";
-        // On vÃ©rifie le rÃ´le pour mettre Ã  jour la bonne table
+        // On vérifie le rôle pour mettre à jour la bonne table
         if (userRole === 'conducteur' || userRole === 'client') {
             sql = "UPDATE conducteur SET fcm_token = ? WHERE id_cond = ?";
         } else {
@@ -1073,18 +1096,18 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
         }
 
         await db.query(sql, [fcmToken, userId]);
-        console.log(`ðŸ“± Token FCM sauvegardÃ© pour le ${userRole} ID ${userId}`);
+        console.log(`Token FCM sauvegardé pour le ${userRole} ID ${userId}`);
         
-        res.json({ success: true, message: "Token Firebase enregistrÃ© avec succÃ¨s !" });
+        res.json({ success: true, message: "Token Firebase enregistré avec succès !" });
 
     } catch (error) {
-        console.error("âŒ Erreur lors de la sauvegarde du Token FCM :", error);
-        res.status(500).json({ error: "Erreur base de donnÃ©es" });
+        console.error("Erreur lors de la sauvegarde du Token FCM :", error);
+        res.status(500).json({ error: "Erreur base de données" });
     }
 });
 //=========================================
 // 6. LANCEMENT
 // ==========================================
 app.listen(port, () => {
-  console.log(`ðŸš€ Serveur Backend prÃªt sur http://localhost:${port}`);
+  console.log(`Serveur Backend prêt sur http://localhost:${port}`);
 });
