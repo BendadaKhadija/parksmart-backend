@@ -17,15 +17,19 @@ const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
 if (serviceAccountString) {
   try {
     const serviceAccount = JSON.parse(serviceAccountString);
+    
+    // 👇 LA LIGNE MAGIQUE POUR SAUVER LA CLÉ SUR RAILWAY 👇
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
     console.log("Firebase Admin SDK initialisé.");
   } catch (error) {
-    console.error("Erreur lors de l'initialisation de Firebase Admin. Vérifiez la variable d'environnement FIREBASE_SERVICE_ACCOUNT.", error.message);
+    console.error("Erreur d'initialisation Firebase :", error.message);
   }
 } else {
-  console.warn("La variable d'environnement FIREBASE_SERVICE_ACCOUNT est manquante. Les fonctionnalités liées à Firebase (Google Auth, Push Notifications) seront désactivées.");
+  console.warn("Variable FIREBASE_SERVICE_ACCOUNT manquante.");
 }
 
 const app = express();
