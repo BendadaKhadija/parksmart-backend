@@ -204,7 +204,7 @@ app.post('/api/auth/login', async (req, res) => {
       user: { ...user, id: userId, role: role, prenom: user.prenom || null } // Assurez-vous que prenom est toujours présent
     });
 
-// Dans la route POST /api/auth/login
+// Dans votre route POST /api/auth/login
 
 } catch (error) {
   // --- NOUVEAU BLOC DE LOGGING AMÉLIORÉ ---
@@ -212,14 +212,15 @@ app.post('/api/auth/login', async (req, res) => {
   console.error('❌ CRASH SUR LA ROUTE DE CONNEXION CLASSIQUE ❌');
   console.error('================================================');
   console.error('Heure:', new Date().toISOString());
-  console.error('Email reçu pour la tentative:', req.body.email); // Ne jamais logger le mot de passe !
+  console.error('Email reçu pour la tentative:', req.body.email); // On ne logue jamais le mot de passe !
   console.error('--- Erreur Détaillée ---');
-  console.error(error);
+  console.error(error); // Affiche l'erreur complète avec sa "stack trace"
   console.error('------------------------------------------------');
   // --- FIN DU BLOC ---
   
   res.status(500).json({ message: "Erreur interne du serveur. Consultez les logs du backend sur Railway." });
 }
+
 
 });
 app.post('/api/auth/google', async (req, res) => {
