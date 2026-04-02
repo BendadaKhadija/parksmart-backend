@@ -169,6 +169,13 @@ app.post('/api/auth/login', async (req, res) => {
 
     const { user, role, userId } = result;
 
+    // --- CONTRÔLE DE SÉCURITÉ : Vérifier si l'utilisateur a un mot de passe pour la connexion standard ---
+    // Si l'utilisateur n'a pas de mot de passe (ex: créé via Google), on refuse la connexion par mot de passe.
+    if (!user.password || typeof user.password !== 'string') {
+        console.warn(`Tentative de connexion par mot de passe pour l'utilisateur ${email} qui n'a pas de mot de passe défini (probablement SSO).`);
+        return res.status(400).json({ message: 'Ce compte a été créé via un service tiers. Veuillez vous connecter avec la méthode d\'origine (ex: Google).' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Mot de passe incorrect.' });
@@ -403,7 +410,7 @@ app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), a
     // 1. On ne récupère PLUS nb_rangees et nb_places_par_rangee
     const { nom, adresse, tarif_heure } = req.body;
 
-    console.log(`MODIFICATION parking ${id}`);
+    console.log(`MODIFICATION parking ${parkingId}`);
 
     const tarif = parseFloat(tarif_heure);
 
