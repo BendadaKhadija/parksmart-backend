@@ -207,7 +207,17 @@ app.post('/api/auth/login', async (req, res) => {
 });
 app.post('/api/auth/google', async (req, res) => {
   try {
-    const { token } = req.body;
+    // 👇 --- LES 5 LIGNES MAGIQUES SONT ICI --- 👇
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: 'Aucun token fourni dans le header.' });
+    }
+
+    // On récupère la vraie chaîne du token (après le mot "Bearer ")
+    const token = authHeader.split(' ')[1];
+    // 👆 -------------------------------------- 👆
+
     const decodedToken = await admin.auth().verifyIdToken(token);
     const email = decodedToken.email;
 
@@ -240,6 +250,7 @@ app.post('/api/auth/google', async (req, res) => {
       }
     }
 
+    // ⚠️ ATTENTION : REGARDEZ LA LIGNE SUIVANTE DANS VOTRE CODE ⚠️
     const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     console.log(`Connexion Google réussie pour : ${email}`);
