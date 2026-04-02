@@ -1,5 +1,7 @@
 // On importe l'outil JWT
 const jwt = require('jsonwebtoken');
+// On s'assure que les variables d'environnement sont chargées
+require('dotenv').config();
 
 // C'est notre "Gardien"
 const authMiddleware = (req, res, next) => {
@@ -8,8 +10,8 @@ const authMiddleware = (req, res, next) => {
     // Le format est "Bearer VOTRE_LONG_TOKEN"
     const token = req.headers.authorization.split(' ')[1];
 
-    // 2. Vérifier si le token est valide
-    const decodedToken = jwt.verify(token, 'MON_CODE_SECRET_ULTRA_SECURISE');
+    // 2. Vérifier si le token est valide en utilisant le secret depuis .env
+    const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
 
     // 3. Extraire l'ID et le rôle de l'utilisateur du token
     const userId = decodedToken.id;

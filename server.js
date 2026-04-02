@@ -9,15 +9,25 @@ const path = require('path');
 const fs = require('fs');
 const admin = require('firebase-admin');
 const cron = require('node-cron');
-// Remplacez : const serviceAccount = require('./firebase-key.json');
-// Par ceci ðŸ‘‡
 require('dotenv').config(); 
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+const authMiddleware = require('./authMiddleware');
+const roleMiddleware = require('./roleMiddleware');
 
+const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
+if (serviceAccountString) {
+  try {
+    const serviceAccount = JSON.parse(serviceAccountString);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log("âœ… Firebase Admin SDK initialisÃ©.");
+  } catch (error) {
+    console.error("âŒ Erreur lors de l'initialisation de Firebase Admin. VÃ©rifiez la variable d'environnement FIREBASE_SERVICE_ACCOUNT.", error.message);
+  }
+} else {
+  console.warn("âš ï¸ La variable d'environnement FIREBASE_SERVICE_ACCOUNT est manquante. Les fonctionnalitÃ©s liÃ©es Ã  Firebase (Google Auth, Push Notifications) seront dÃ©sactivÃ©es.");
+}
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -74,37 +84,6 @@ db.getConnection()
         console.error("âŒ Erreur de connexion BDD :", err.message);
     });
 
-// ==========================================
-// 2. MIDDLEWARE D'AUTHENTIFICATION
-// ==========================================
-const authMiddleware = (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'AccÃ¨s refusÃ©. Token manquant.' });
-
-  try {
-    const decoded = jwt.verify(token, 'MON_SUPER_SECRET');
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(403).json({ message: 'Token invalide.' });
-  }
-};
-// --- MIDDLEWARE D'AUTHENTIFICATION ---
-function authenticateToken(req, res, next) {
-    // RÃ©cupÃ©rer le header "Authorization: Bearer <TOKEN>"
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (token == null) return res.sendStatus(401); // Pas de token envoyÃ©
-
-    // VÃ©rifier le token
-    // ATTENTION : 'MON_SUPER_SECRET' doit Ãªtre le mÃªme que celui utilisÃ© dans /login
-    jwt.verify(token, 'MON_SUPER_SECRET', (err, user) => {
-        if (err) return res.sendStatus(403); // Token invalide ou expirÃ©
-        req.user = user; // On attache l'utilisateur Ã  la requÃªte
-        next(); // On passe Ã  la suite (la route)
-    });
-}
 // ==========================================
 // 3. ROUTES AUTHENTIFICATION
 // ==========================================
@@ -178,7 +157,7 @@ app.post('/api/auth/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Mot de passe incorrect.' });
 
-    const token = jwt.sign({ id: userId, role: role }, 'MON_SUPER_SECRET', { expiresIn: '24h' });
+    const token = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     res.json({ 
       token, 
@@ -241,7 +220,7 @@ app.post('/api/auth/google', async (req, res) => {
     }
 
     // 5. GÃ©nÃ©rer TON token
-    const jwtToken = jwt.sign({ id: userId, role: role }, 'MON_SUPER_SECRET', { expiresIn: '24h' });
+    const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     console.log(`âœ… Connexion Google rÃ©ussie pour : ${email}`);
 
@@ -268,10 +247,7 @@ app.post('/api/auth/google', async (req, res) => {
 // ==========================================
 
 // AJOUTER parking + GENERER placeS
-app.post('/api/admin/parking', authMiddleware, async (req, res) => {
-    // VÃ©rification de sÃ©curitÃ©
-    if (req.user.role !== 'gestionnaire') return res.status(403).json({ message: "Interdit." });
-
+app.post('/api/admin/parking', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     // ðŸ”´ CORRECTION ICI : On ajoute latitude, longitude et image_url dans la rÃ©cupÃ©ration
     const { 
         nom, 
@@ -284,7 +260,7 @@ app.post('/api/admin/parking', authMiddleware, async (req, res) => {
         image_url   // <--- AjoutÃ© (le front envoie souvent image_url, pas image)
     } = req.body;
 
-    const id_gest = req.user.id;
+    const id_gest = req.auth.userId;
     
     // DEBUG: On log tout le body pour Ãªtre sÃ»r
     console.log("ðŸ“¥ DONNÃ‰ES REÃ‡UES COMPLÃˆTES :", req.body); 
@@ -358,8 +334,12 @@ app.get('/api/my-parkings/:id', async (req, res) => {
 });
 
 // 1. SUPPRIMER UN parking (CORRIGÃ‰ AVEC paiementS ET avis)
-app.delete('/api/parkings/:id', async (req, res) => {
+app.delete('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     const id = req.params.id;
+    const id_gest = req.auth.userId;
+
+    // TODO: Ajouter une vÃ©rification pour s'assurer que le gestionnaire est bien le propriÃ©taire du parking
+    // const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ?", [id]);
     
     try {
         console.log(`Tentative de suppression du parking ${id}...`);
@@ -402,10 +382,14 @@ app.delete('/api/parkings/:id', async (req, res) => {
 });
 // --- Route pour MODIFIER un parking (SÃ©curisÃ©e) ---
 // J'ai ajoutÃ© 'authMiddleware' ici pour protÃ©ger la route
-app.put('/api/parkings/:id', authMiddleware, async (req, res) => {
+app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     const id = req.params.id;
+    const id_gest = req.auth.userId;
     // 1. On ne rÃ©cupÃ¨re PLUS nb_rangees et nb_places_par_rangee
     const { nom, adresse, tarif_heure } = req.body;
+
+    // TODO: Ajouter une vÃ©rification pour s'assurer que le gestionnaire est bien le propriÃ©taire du parking
+    // const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ? AND id_gest = ?", [id, id_gest]);
 
     console.log(`ðŸ“¡ MODIFICATION parking ${id}`);
 
@@ -434,16 +418,14 @@ app.put('/api/parkings/:id', authMiddleware, async (req, res) => {
     }
 });
 // MISE Ã€ JOUR PROFIL gestionnaire (CORRIGÃ‰E)
-app.put('/api/manager/update', authMiddleware, upload.single('image'), async (req, res) => {
+app.put('/api/manager/update', authMiddleware, roleMiddleware(['gestionnaire']), upload.single('image'), async (req, res) => {
     console.log("ðŸ“ Update Profil demandÃ©...");
 
-    // Le front envoie 'id_user', 'nom', 'email' via FormData
-    const { id_user, nom, email } = req.body; 
+    const id_user = req.auth.userId;
+    const { nom, email } = req.body; 
     
     // Si une nouvelle image est uploadÃ©e
     const newPhotoPath = req.file ? `/uploads/${req.file.filename}` : null;
-
-    if (!id_user) return res.status(400).json({ error: "ID utilisateur manquant" });
 
     try {
         let sql;
@@ -485,19 +467,17 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ==========================================
 // ROUTE : MISE Ã€ JOUR PROFIL 
 // ==========================================
-app.post('/api/user/update', authMiddleware, upload.single('avatar'), async (req, res) => {
+app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req, res) => {
     console.log("ðŸ“ Demande de mise Ã  jour profil reÃ§ue...");
 
-    const userId = req.user.id; 
-    const userRole = req.user.role; // 'conducteur' ou 'gestionnaire'
+    const userId = req.auth.userId; 
+    const userRole = req.auth.role; // 'conducteur' ou 'gestionnaire'
 
     // 1. On rÃ©cupÃ¨re TOUS les champs (nom, prenom, email)
     const { nom, prenom, email } = req.body;
     
     // Chemin image
     const newPhotoPath = req.file ? `/uploads/${req.file.filename}` : null;
-
-    if (!userId) return res.status(400).json({ error: "Utilisateur non identifiÃ©." });
 
     try {
         let sql;
@@ -542,7 +522,7 @@ app.post('/api/user/update', authMiddleware, upload.single('avatar'), async (req
         
         res.json({ 
             message: "Mise Ã  jour rÃ©ussie", 
-            avatar: newPhotoPath,
+            photo: newPhotoPath,
             user: { nom, prenom, email }
         });
 
@@ -608,12 +588,9 @@ app.get('/api/places/:id_park', async (req, res) => {
 });
 
 // DÃ©marrer une rÃ©servation (Client)
-app.post('/api/reservation/start', authenticateToken, async (req, res) => {
-    // VÃ©rification du rÃ´le
-    if (req.user.role !== 'conducteur') return res.sendStatus(403);
-
+app.post('/api/reservation/start', authMiddleware, roleMiddleware(['conducteur']), async (req, res) => {
     const { id_place } = req.body;
-    const id_cond = req.user.id; 
+    const id_cond = req.auth.userId; 
 
     try {
         // 1. VÃ©rifier si le conducteur a DÃ‰JÃ€ une rÃ©servation active
@@ -668,25 +645,9 @@ app.post('/api/reservation/start', authenticateToken, async (req, res) => {
 // ==========================================
 // ROUTE : VÃ©rifier rÃ©servation active (HYBRIDE)
 // ==========================================
-app.get('/api/reservation/active', async (req, res) => {
+app.get('/api/reservation/active', authMiddleware, async (req, res) => {
     try {
-        let userId = null;
-
-        // 1. On essaie de lire l'ID depuis l'URL (?userId=3)
-        if (req.query.userId) {
-            userId = req.query.userId;
-        } 
-        // 2. Sinon, on essaie de lire depuis le Token (si envoyÃ©)
-        else if (req.headers['authorization']) {
-             // DÃ©coder le token manuellement ou via middleware si tu prÃ©fÃ¨res
-             const token = req.headers['authorization'].split(' ')[1];
-             const decoded = jwt.verify(token, 'MON_SUPER_SECRET');
-             userId = decoded.id;
-        }
-
-        if (!userId) {
-            return res.status(400).json({ message: "ID utilisateur manquant (via token ou ?userId=)" });
-        }
+        const userId = req.auth.userId;
 
         const [rows] = await db.query(
             "SELECT *, TIMESTAMPDIFF(SECOND, date_arrivee, NOW()) AS temps_ecoule_secondes FROM reservation WHERE id_cond = ? AND date_depart IS NULL ORDER BY date_arrivee DESC LIMIT 1",
@@ -841,11 +802,11 @@ app.post('/api/paiement/confirm', async (req, res) => {
 // ROUTE : Historique Visuel (SÃ‰CURISÃ‰E ðŸ”’)
 // ==========================================
 // 1. On ajoute 'authMiddleware' pour forcer la vÃ©rification du Token
-app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
+app.get('/api/reservations/history', authMiddleware, async (req, res) => {
     
     // 2. LE SECRET EST ICI : On ignore req.params.id (l'URL)
     // On prend l'ID directement depuis le token de la personne connectÃ©e !
-    const idconducteur = req.user.id; 
+    const idconducteur = req.auth.userId; 
 
     try {
         const sql = `
@@ -909,11 +870,9 @@ app.put('/api/notifications/marquer-lu/:id_notif', async (req, res) => {
 // ==========================================
 // ROUTE MANAGER : TOUTES LES RÃ‰SERVATIONS
 // ==========================================
-app.get('/api/manager/reservations/:idGest', authMiddleware, async (req, res) => {
-    const idGest = req.params.idGest;
-
-    // VÃ©rification de sÃ©curitÃ©
-    if (req.user.role !== 'gestionnaire') return res.status(403).json({ message: "AccÃ¨s interdit" });
+app.get('/api/manager/reservations', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
+    // On utilise l'ID du token pour sÃ©curiser la route
+    const idGest = req.auth.userId;
 
     try {
         const sql = `
@@ -947,8 +906,9 @@ app.get('/api/manager/reservations/:idGest', authMiddleware, async (req, res) =>
 // ==========================================
 // ROUTE MANAGER : REVENUS (paiementS)
 // ==========================================
-app.get('/api/manager/earnings/:idGest', authMiddleware, async (req, res) => {
-    const idGest = req.params.idGest;
+app.get('/api/manager/earnings', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
+    // On utilise l'ID du token pour sÃ©curiser la route
+    const idGest = req.auth.userId;
 
     try {
         const sql = `
@@ -1097,8 +1057,8 @@ cron.schedule('* * * * *', async () => {
 // ROUTE : SAUVEGARDER LE TOKEN FIREBASE (FCM)
 // ==========================================
 app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
-    const userId = req.user.id;
-    const userRole = req.user.role; // 'conducteur' ou 'gestionnaire'
+    const userId = req.auth.userId;
+    const userRole = req.auth.role; // 'conducteur' ou 'gestionnaire'
     const { fcmToken } = req.body;
 
     if (!fcmToken) return res.status(400).json({ error: "Token FCM manquant" });
@@ -1128,4 +1088,3 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
 app.listen(port, () => {
   console.log(`ðŸš€ Serveur Backend prÃªt sur http://localhost:${port}`);
 });
-
