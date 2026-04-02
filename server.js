@@ -1146,14 +1146,13 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
     }
 });
 // ==========================================
-// 5. ROUTES UTILISATEUR (Pour éviter les 404)
+// 5. ROUTES HISTORIQUE & RÉSERVATION ACTIVE
 // ==========================================
 
-// Récupérer l'historique des réservations (Correction du 404)
-app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
+// 1. Récupérer l'historique des réservations
+app.get('/api/reservation/history', authMiddleware, async (req, res) => {
     try {
-        const userId = req.params.id;
-        // Remplacez par votre vraie requête SQL pour l'historique
+        const userId = req.auth.userId; // On utilise le token de manière sécurisée
         const [history] = await db.query('SELECT * FROM reservation WHERE id_cond = ?', [userId]);
         res.json(history);
     } catch (error) {
@@ -1162,18 +1161,24 @@ app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// Récupérer les notifications (Correction du 404)
-app.get('/api/notifications/:id', authMiddleware, async (req, res) => {
+// 2. Récupérer la réservation active
+app.get('/api/reservation/active', authMiddleware, async (req, res) => {
     try {
-        const userId = req.params.id;
-        // Si vous n'avez pas encore de table notification, renvoyez un tableau vide pour éviter le crash du frontend
-        // const [notifs] = await db.query('SELECT * FROM notification WHERE id_cond = ?', [userId]);
-        res.json([]); // <- Renvoie un tableau vide pour l'instant
+        const userId = req.auth.userId;
+        const [active] = await db.query('SELECT * FROM reservation WHERE id_cond = ? AND statut = "en_cours" LIMIT 1', [userId]);
+        
+        if (active.length > 0) {
+            res.json(active[0]);
+        } else {
+            res.json(null);
+        }
     } catch (error) {
-        console.error("Erreur Notifications :", error);
-        res.status(500).json({ message: "Erreur serveur" });
+        console.error("Erreur Réservation Active :", error);
+        res.json(null);
     }
 });
+
+
 //=========================================
 // 6. LANCEMENT
 // ==========================================
