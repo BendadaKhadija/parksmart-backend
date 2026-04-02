@@ -1078,7 +1078,7 @@ cron.schedule('* * * * *', async () => {
         const [reservations] = await db.query(querySelect);
 
         for (const resa of reservations) {
-            const titre = "Rappel de stationnement ⏳"; // Changed emoji for consistency with "1 minute"
+            const titre = "Rappel de stationnement "; // Changed emoji for consistency with "1 minute"
             const message = `Attention : Cela fait plus de 1 minute que votre stationnement (Réservation n°${resa.id_resa}) a commencé.`;
 
             const checkNotifQuery = `SELECT id_notif FROM notification WHERE id_cond = ? AND message = ?`;
@@ -1148,18 +1148,32 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
 // ==========================================
 // ROUTES HISTORIQUE & NOTIFICATIONS (POUR LE FRONTEND)
 // ==========================================
-
 // 1. Récupérer l'historique (Le frontend appelle /api/reservations/history/5)
 app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
     try {
-        const userId = req.params.id; // Récupère le "5" envoyé par le frontend
-        
+        const userId = req.params.id;
+
         // Sécurité : on vérifie que l'utilisateur demande bien son propre historique
         if (parseInt(userId) !== req.auth.userId) {
             return res.status(403).json({ message: "Accès refusé." });
         }
 
-        const [history] = await db.query('SELECT * FROM reservation WHERE id_cond = ? ORDER BY date_arrivee DESC', [userId]);
+        // 🌟 NOUVEAU : On fait des JOIN pour récupérer les infos du parking !
+        const sql = `
+            SELECT 
+                r.*, 
+                pk.nom, 
+                pk.adresse, 
+                pk.tarif,
+                pk.image
+            FROM reservation r
+            JOIN place pl ON r.id_place = pl.id_place
+            JOIN parking pk ON pl.id_park = pk.id_park
+            WHERE r.id_cond = ? 
+            ORDER BY r.date_arrivee DESC
+        `;
+
+        const [history] = await db.query(sql, [userId]);
         res.json(history);
     } catch (error) {
         console.error("Erreur Historique :", error);
