@@ -151,7 +151,7 @@ app.post('/api/auth/signup', upload.single('image'), async (req, res) => {
     res.status(201).json({ message: 'Compte créé avec succès !' });
 
   } catch (error) {
-    console.error("Erreur Inscription :", error);
+    console.error("🚨 ERREUR INSCRIPTION CRITIQUE :", error);
     res.status(500).json({ message: "Erreur serveur ou email déjà utilisé." });
   }
 });
@@ -200,8 +200,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: { ...user, id: userId, role: role, prenom: user.prenom || null } // Assurez-vous que prenom est toujours présent
     });
 
-  } catch (error) { // Attrape les autres erreurs vraiment inattendues
-    console.error("Erreur fatale inattendue dans la route Login :", error);
+  } catch (error) { // Attrape les autres erreurs fatales inattendues
+    console.error("🚨 ERREUR LOGIN CRITIQUE :", error);
     res.status(500).json({ message: 'Erreur serveur' });
   }
 });
@@ -258,7 +258,7 @@ app.post('/api/auth/google', async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Erreur Google Login Backend :", error);
+    console.error("🚨 ERREUR GOOGLE LOGIN CRITIQUE :", error);
     res.status(401).json({ message: 'Token Google invalide, expiré ou refusé.' });
   }
 });
