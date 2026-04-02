@@ -57,7 +57,7 @@ const port = process.env.PORT || 55637;
 // ==========================================
 let db;
 if (process.env.MYSQL_URL) {
-  // Railway : utilise l'URL de connexion complÃ¨te (la plus fiable)
+  // Railway : utilise l'URL de connexion complète (la plus fiable)
   console.log("Connexion via MYSQL_URL (Railway)");
   db = mysql.createPool(process.env.MYSQL_URL);
 } else {
@@ -83,6 +83,27 @@ db.getConnection()
     .catch(err => {
         console.error("Erreur de connexion BDD :", err.message);
     });
+
+// ==========================================
+// 2. HELPERS
+// ==========================================
+
+/**
+ * Trouve un utilisateur par email dans les tables conducteur et gestionnaire.
+ * @param {string} email L'email de l'utilisateur à trouver.
+ * @returns {Promise<Object|null>} Un objet contenant l'utilisateur, son rôle et son ID, ou null si non trouvé.
+ */
+const findUserByEmail = async (email) => {
+  const [conds] = await db.query('SELECT id_cond, nom, prenom, email, password, photo FROM conducteur WHERE email = ?', [email]);
+  if (conds.length > 0) {
+    return { user: conds[0], role: 'conducteur', userId: conds[0].id_cond };
+  }
+  const [gests] = await db.query('SELECT id_gest, nom, prenom, email, password, photo FROM gestionnaire WHERE email = ?', [email]);
+  if (gests.length > 0) {
+    return { user: gests[0], role: 'gestionnaire', userId: gests[0].id_gest };
+  }
+  return null;
+};
 
 // ==========================================
 // 3. ROUTES AUTHENTIFICATION
@@ -130,38 +151,28 @@ app.post('/api/auth/signup', upload.single('image'), async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    let user = null;
-    let role = '';
-    let userId = null;
-    
 
-    // 1. Chercher dans conducteur
-    const [conds] = await db.query('SELECT * FROM conducteur WHERE email = ?', [email]);
-    if (conds.length > 0) {
-      user = conds[0];
-      role = 'conducteur';
-      userId = user.id_cond;
-    } else {
-      // 2. Chercher dans gestionnaire
-      const [gests] = await db.query('SELECT * FROM gestionnaire WHERE email = ?', [email]);
-      if (gests.length > 0) {
-        user = gests[0];
-        role = 'gestionnaire';
-        userId = user.id_gest; 
-      }
+    const result = await findUserByEmail(email);
+
+    if (!result) {
+      return res.status(404).json({ message: 'Email inconnu.' });
     }
 
-    if (!user) return res.status(404).json({ message: 'Email inconnu.' });
+    const { user, role, userId } = result;
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Mot de passe incorrect.' });
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Mot de passe incorrect.' });
+    }
 
     const token = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
+    // On ne renvoie jamais le mot de passe, même hashé
+    delete user.password;
+
     res.json({ 
       token, 
-      user: { id: userId, nom: user.nom, email: user.email, role: role,photo: user.photo} 
+      user: { ...user, id: userId, role: role } 
     });
 
   } catch (error) {
@@ -172,59 +183,44 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { token } = req.body;
-    
-    // 1. Demander à Firebase de vérifier si le token est un vrai
     const decodedToken = await admin.auth().verifyIdToken(token);
-    
-    // On récupère les infos sécurisées de Google
     const email = decodedToken.email;
-    const nomComplet = decodedToken.name || 'Utilisateur Google';
-    const photo = decodedToken.picture || null;
 
-    // Petite astuce pour séparer Nom et Prénom (si Google donne tout d'un coup)
-    const [prenom, ...nomArray] = nomComplet.split(' ');
-    const nom = nomArray.join(' ') || prenom; 
+    let result = await findUserByEmail(email);
+    let user, role, userId;
 
-    let user = null;
-    let role = '';
-    let userId = null;
-
-    // 2. Chercher dans conducteur
-    const [conds] = await db.query('SELECT * FROM conducteur WHERE email = ?', [email]);
-    if (conds.length > 0) {
-      user = conds[0];
-      role = 'conducteur';
-      userId = user.id_cond;
-    } else {
-      // 3. Chercher dans gestionnaire
-      const [gests] = await db.query('SELECT * FROM gestionnaire WHERE email = ?', [email]);
-      if (gests.length > 0) {
-        user = gests[0];
-        role = 'gestionnaire';
-        userId = user.id_gest;
-      }
-    }
-
-    // 4. SI L'UTILISATEUR N'EXISTE PAS : On le crée automatiquement !
-    if (!user) {
+    if (!result) {
+      // L'utilisateur n'existe pas, on le crée en tant que 'conducteur'
       console.log("Nouvel utilisateur Google détecté, création du compte...");
+      const nomComplet = decodedToken.name || 'Utilisateur Google';
+      const photo = decodedToken.picture || null;
+      const [prenom, ...nomArray] = nomComplet.split(' ');
+      const nom = nomArray.join(' ') || prenom; 
       
-      const [result] = await db.query(
+      const [insertResult] = await db.query(
         'INSERT INTO conducteur (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
         [nom, prenom, email, 'google_sso_no_password', photo] 
       );
       
-      userId = result.insertId;
+      userId = insertResult.insertId;
       role = 'conducteur';
-      user = { id_cond: userId, nom: nom, prenom: prenom, email: email, photo: photo };
+      user = { id_cond: userId, nom, prenom, email, photo };
+    } else {
+      ({ user, role, userId } = result);
+      // Potentiellement mettre à jour la photo de profil si elle a changé sur Google
+      if (user.photo !== decodedToken.picture) {
+          const photo = decodedToken.picture || null;
+          await db.query(`UPDATE ${role === 'conducteur' ? 'conducteur' : 'gestionnaire'} SET photo = ? WHERE ${role === 'conducteur' ? 'id_cond' : 'id_gest'} = ?`, [photo, userId]);
+          user.photo = photo;
+      }
     }
 
-    // 5. Générer TON token
     const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     console.log(`Connexion Google réussie pour : ${email}`);
 
-    // 6. Renvoyer au front
+    delete user.password;
+
     res.json({ 
       token: jwtToken, 
       user: { 
@@ -232,7 +228,7 @@ app.post('/api/auth/google', async (req, res) => {
           nom: user.nom, 
           email: user.email, 
           role: role, 
-          photo: user.photo || photo 
+          photo: user.photo
       } 
     });
 
@@ -393,7 +389,7 @@ app.delete('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire'])
 // --- Route pour MODIFIER un parking (Sécurisée) ---
 // J'ai ajouté 'authMiddleware' ici pour protéger la route
 app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
-    const id = req.params.id;
+    const parkingId = req.params.id;
     const id_gest = req.auth.userId;
     // 1. On ne récupère PLUS nb_rangees et nb_places_par_rangee
     const { nom, adresse, tarif_heure } = req.body;
@@ -404,7 +400,7 @@ app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), a
 
     try {
         // VÉRIFICATION DE PROPRIÉTÉ
-        const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ? AND id_gest = ?", [id, id_gest]);
+        const [parking] = await db.query("SELECT id_gest FROM parking WHERE id_park = ? AND id_gest = ?", [parkingId, id_gest]);
 
         if (parking.length === 0) {
             return res.status(403).json({ error: "Accès refusé ou parking introuvable." });
@@ -418,7 +414,7 @@ app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), a
                 tarif_heure = ?
             WHERE id_park = ?`;
 
-        const [result] = await db.query(sql, [nom, adresse, tarif, id]);
+        const [result] = await db.query(sql, [nom, adresse, tarif, parkingId]);
 
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: "Parking introuvable (ID incorrect)" });
@@ -429,41 +425,6 @@ app.put('/api/parkings/:id', authMiddleware, roleMiddleware(['gestionnaire']), a
     } catch (error) {
         console.error("Erreur SQL Update :", error);
         res.status(500).json({ error: "Erreur serveur lors de la modification" });
-    }
-});
-// MISE Ã€ JOUR PROFIL gestionnaire (CORRIGÃ‰E)
-app.put('/api/manager/update', authMiddleware, roleMiddleware(['gestionnaire']), upload.single('image'), async (req, res) => {
-    console.log("Update Profil demandé...");
-
-    const id_user = req.auth.userId;
-    const { nom, email } = req.body; 
-    
-    // Si une nouvelle image est uploadÃ©e
-    const newPhotoPath = req.file ? `/uploads/${req.file.filename}` : null;
-
-    try {
-        let sql;
-        let params;
-
-        if (newPhotoPath) {
-            // Mise Ã  jour AVEC photo (Attention: colonne 'photo' ou 'image' ? VÃ©rifie ta BDD. Je mets 'photo' comme dans ton signup)
-            sql = "UPDATE gestionnaire SET nom=?, email=?, photo=? WHERE id_gest=?";
-            params = [nom, email, newPhotoPath, id_user];
-        } else {
-            // Mise Ã  jour SANS photo
-            sql = "UPDATE gestionnaire SET nom=?, email=? WHERE id_gest=?";
-            params = [nom, email, id_user];
-        }
-
-        const [result] = await db.query(sql, params);
-
-        if (result.affectedRows === 0) return res.status(404).json({ message: "Utilisateur non trouvÃ©" });
-
-        res.json({ message: "Mise à jour réussie", newImage: newPhotoPath });
-
-    } catch (error) {
-        console.error("Erreur Update Profil:", error);
-        res.status(500).json({ error: "Erreur base de donnÃ©es" });
     }
 });
 // --- ROUTE PUBLIQUE : RECUPERER TOUS LES parkingS (POUR LE CLIENT) ---
@@ -479,51 +440,47 @@ app.get('/api/parkings', async (req, res) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ==========================================
-// ROUTE : MISE Ã€ JOUR PROFIL 
+// ROUTE : MISE À JOUR PROFIL (Unifiée)
 // ==========================================
-app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req, res) => { // TODO: This seems to duplicate PUT /api/manager/update
-    console.log("Demande de mise à jour profil reçue...");
+app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res) => {
+    console.log("Demande de mise à jour de profil reçue...");
 
     const userId = req.auth.userId; 
-    const userRole = req.auth.role; // 'conducteur' ou 'gestionnaire'
-
-    // 1. On récupère TOUS les champs (nom, prenom, email)
+    const userRole = req.auth.role;
     const { nom, prenom, email } = req.body;
-    
-    // Chemin image
     const newPhotoPath = req.file ? `/uploads/${req.file.filename}` : null;
 
     try {
         let sql;
         let params;
-        
-        // --- LOGIQUE SPÉCIFIQUE conducteur (Avec Prénom) ---
-        if (userRole === 'conducteur' || userRole === 'client') { 
-            // Note: Vérifiez si votre rôle s'appelle 'conducteur' ou 'client' dans le token
-            
-            let querySet = "UPDATE conducteur SET nom=?, prenom=?, email=?";
-            let queryParams = [nom, prenom, email];
+        const updatedUser = { nom, email };
+
+        if (userRole === 'conducteur') {
+            let querySet = "UPDATE conducteur SET nom = ?, prenom = ?, email = ?";
+            params = [nom, prenom, email];
+            updatedUser.prenom = prenom;
 
             if (newPhotoPath) {
-                querySet += ", photo=?"; // ou image=? selon votre BDD
-                queryParams.push(newPhotoPath);
+                querySet += ", photo = ?";
+                params.push(newPhotoPath);
             }
+            sql = `${querySet} WHERE id_cond = ?`;
+            params.push(userId);
 
-            sql = `${querySet} WHERE id_cond=?`;
-            params = [...queryParams, userId];
-        } 
-        // --- LOGIQUE gestionnaire (Sans Prénom, si applicable) ---
-        else {
-            let querySet = "UPDATE gestionnaire SET nom=?, email=?";
-            let queryParams = [nom, email];
+        } else if (userRole === 'gestionnaire') {
+            let querySet = "UPDATE gestionnaire SET nom = ?, email = ?";
+            params = [nom, email];
+            updatedUser.prenom = prenom; // On inclut le prénom s'il est fourni
 
             if (newPhotoPath) {
-                querySet += ", photo=?";
-                queryParams.push(newPhotoPath);
+                querySet += ", photo = ?";
+                params.push(newPhotoPath);
             }
+            sql = `${querySet} WHERE id_gest = ?`;
+            params.push(userId);
 
-            sql = `${querySet} WHERE id_gest=?`;
-            params = [...queryParams, userId];
+        } else {
+            return res.status(400).json({ message: "Rôle utilisateur invalide." });
         }
 
         const [result] = await db.query(sql, params);
@@ -532,12 +489,12 @@ app.post('/api/user/update', authMiddleware, upload.single('photo'), async (req,
             return res.status(404).json({ message: "Utilisateur introuvable." });
         }
 
-        console.log(`Profil ${userRole} mis à jour avec succès !`);
+        console.log(`Profil ${userRole} (ID: ${userId}) mis à jour avec succès !`);
         
         res.json({ 
             message: "Mise à jour réussie", 
-            photo: newPhotoPath,
-            user: { nom, prenom, email }
+            photo: newPhotoPath, // peut être null
+            user: updatedUser
         });
 
     } catch (error) {
@@ -568,7 +525,7 @@ app.get('/api/parking-map/:id', async (req, res) => {
                 p.id_place, 
                 p.numero, 
                 CASE 
-                    WHEN r.id_resa IS NOT NULL THEN 'occupÃ©' 
+                    WHEN r.id_resa IS NOT NULL THEN 'occupé' 
                     ELSE 'libre'
                 END as statut_actuel
             FROM place p
@@ -657,7 +614,7 @@ app.post('/api/reservation/start', authMiddleware, roleMiddleware(['conducteur']
     }
 });
 // ==========================================
-// ROUTE : VÃ©rifier rÃ©servation active (HYBRIDE)
+// ROUTE : Vérifier réservation active
 // ==========================================
 app.get('/api/reservation/active', authMiddleware, async (req, res) => {
     try {
@@ -683,10 +640,11 @@ app.get('/api/reservation/active', authMiddleware, async (req, res) => {
 // ==========================================
 //  STOP reservation + LIBÉRATION place
 // ==========================================
-app.post('/api/reservation/stop', async (req, res) => {
+app.post('/api/reservation/stop', authMiddleware, async (req, res) => {
     const { id_resa } = req.body;
+    const id_cond_token = req.auth.userId;
 
-    console.log("Tentative d'arrêt réservation ID :", id_resa);
+    console.log(`Tentative d'arrêt de la réservation ${id_resa} par l'utilisateur ${id_cond_token}`);
 
     if (!id_resa) {
         return res.status(400).json({ error: "ID de réservation manquant" });
@@ -709,6 +667,12 @@ app.post('/api/reservation/stop', async (req, res) => {
         }
 
         const resa = rows[0];
+
+        // CONTRÔLE DE SÉCURITÉ : L'utilisateur authentifié doit être le propriétaire de la réservation
+        if (resa.id_cond !== id_cond_token) {
+            await connection.rollback();
+            return res.status(403).json({ message: "Accès non autorisé à cette réservation." });
+        }
 
         // Vérification si déjà terminée
         if (resa.date_depart !== null) {
@@ -780,13 +744,22 @@ app.post('/api/reservation/stop', async (req, res) => {
 app.post('/api/paiement/confirm', authMiddleware, async (req, res) => {
     console.log("Validation finale du paiement...");
     const { id_resa, montant, mode } = req.body;
+    const id_cond_token = req.auth.userId;
 
     if (!id_resa || !montant) {
         return res.status(400).json({ success: false, message: "Données manquantes." });
     }
 
     try {
-        // TODO: Ajouter une vérification que l'utilisateur authentifié (req.auth.userId) est bien celui qui a fait la réservation
+        // CONTRÔLE DE SÉCURITÉ : Vérifier que la réservation appartient à l'utilisateur qui confirme le paiement
+        const [resa] = await db.query('SELECT id_cond FROM reservation WHERE id_resa = ?', [id_resa]);
+        if (resa.length === 0) {
+            return res.status(404).json({ success: false, message: "Réservation non trouvée." });
+        }
+        if (resa[0].id_cond !== id_cond_token) {
+            return res.status(403).json({ success: false, message: "Accès non autorisé à cette réservation." });
+        }
+
         const datepaiement = new Date();
 
         // 1. Enregistrer le paiement
@@ -879,10 +852,22 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
 // Route sécurisée pour marquer une notification comme lue
 app.put('/api/notifications/marquer-lu/:id_notif', authMiddleware, async (req, res) => {
     try {
-        const id_notif = req.params.id_notif;
-        // TODO: Ajouter une vérification que la notification appartient bien à l'utilisateur (req.auth.userId)
+        const id_notif = parseInt(req.params.id_notif, 10);
+        const id_cond_token = req.auth.userId;
+
+        // CONTRÔLE DE SÉCURITÉ : Vérifier que la notification appartient à l'utilisateur connecté
+        const [notif] = await db.query("SELECT id_cond FROM notification WHERE id_notif = ?", [id_notif]);
+
+        if (notif.length === 0) {
+            return res.status(404).json({ message: "Notification non trouvée." });
+        }
+
+        if (notif[0].id_cond !== id_cond_token) {
+            return res.status(403).json({ message: "Accès non autorisé à cette notification." });
+        }
+
         const sql = "UPDATE notification SET lu = 1 WHERE id_notif = ?";
-        await db.query(sql, [id_notif]);
+        await db.query(sql, [id_notif]); // La condition WHERE est suffisante ici
         res.status(200).json({ message: "Notification lue avec succès" });
     } catch (err) {
         console.error("ERREUR SQL PUT :", err);
@@ -890,7 +875,7 @@ app.put('/api/notifications/marquer-lu/:id_notif', authMiddleware, async (req, r
     }
 });
 // ==========================================
-// ROUTE MANAGER : TOUTES LES RÃ‰SERVATIONS
+// ROUTE MANAGER : TOUTES LES RÉSERVATIONS
 // ==========================================
 app.get('/api/manager/reservations', authMiddleware, roleMiddleware(['gestionnaire']), async (req, res) => {
     // On utilise l'ID du token pour sécuriser la route
@@ -1038,7 +1023,7 @@ cron.schedule('* * * * *', async () => {
         const [reservations] = await db.query(querySelect);
 
         for (const resa of reservations) {
-            const titre = "Rappel de stationnement â±ï¸";
+            const titre = "Rappel de stationnement ⏰";
             const message = `Attention : Cela fait plus de 1 minute que votre stationnement (Réservation n°${resa.id_resa}) a commencé.`;
 
             const checkNotifQuery = `SELECT id_notif FROM notification WHERE id_cond = ? AND message = ?`;
@@ -1048,9 +1033,9 @@ cron.schedule('* * * * *', async () => {
                 // 1. Sauvegarder dans la base de données
                 const insertQuery = `INSERT INTO notification (id_cond, titre, message, lu) VALUES (?, ?, ?, 0)`;
                 await db.query(insertQuery, [resa.id_cond, titre, message]);
-                console.log(`[CRON] notification BDD enregistrée (Réservation n°${resa.id_resa})`);
+                console.log(`[CRON] Notification BDD enregistrée (Réservation n°${resa.id_resa})`);
 
-                // 2. FIREBASE : ENVOYER LA notification PUSH AU TÉLÉPHONE !
+                // 2. FIREBASE : ENVOYER LA NOTIFICATION PUSH AU TÉLÉPHONE !
                 if (resa.fcm_token) {
                     const payload = {
                         notification: { 
@@ -1062,7 +1047,7 @@ cron.schedule('* * * * *', async () => {
                     
                     try {
                         await admin.messaging().send(payload);
-                        console.log(`notification Push envoyée au téléphone du client ${resa.id_cond} !`);
+                        console.log(`Notification Push envoyée au téléphone du client ${resa.id_cond} !`);
                     } catch (pushError) {
                         console.error(`Erreur Push Firebase pour le client ${resa.id_cond} :`, pushError.message);
                     }
@@ -1096,7 +1081,7 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
         }
 
         await db.query(sql, [fcmToken, userId]);
-        console.log(`Token FCM sauvegardé pour le ${userRole} ID ${userId}`);
+        console.log(`Token FCM sauvegardé pour l'utilisateur ${userRole} (ID: ${userId})`);
         
         res.json({ success: true, message: "Token Firebase enregistré avec succès !" });
 
