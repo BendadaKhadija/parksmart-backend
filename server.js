@@ -1146,14 +1146,20 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
     }
 });
 // ==========================================
-// 5. ROUTES HISTORIQUE & RÉSERVATION ACTIVE
+// ROUTES HISTORIQUE & NOTIFICATIONS (POUR LE FRONTEND)
 // ==========================================
 
-// 1. Récupérer l'historique des réservations
-app.get('/api/reservation/history', authMiddleware, async (req, res) => {
+// 1. Récupérer l'historique (Le frontend appelle /api/reservations/history/5)
+app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
     try {
-        const userId = req.auth.userId; // On utilise le token de manière sécurisée
-        const [history] = await db.query('SELECT * FROM reservation WHERE id_cond = ?', [userId]);
+        const userId = req.params.id; // Récupère le "5" envoyé par le frontend
+        
+        // Sécurité : on vérifie que l'utilisateur demande bien son propre historique
+        if (parseInt(userId) !== req.auth.userId) {
+            return res.status(403).json({ message: "Accès refusé." });
+        }
+
+        const [history] = await db.query('SELECT * FROM reservation WHERE id_cond = ? ORDER BY date_arrivee DESC', [userId]);
         res.json(history);
     } catch (error) {
         console.error("Erreur Historique :", error);
@@ -1161,11 +1167,29 @@ app.get('/api/reservation/history', authMiddleware, async (req, res) => {
     }
 });
 
-// 2. Récupérer la réservation active
+// 2. Récupérer les notifications (Le frontend appelle /api/notifications/5)
+app.get('/api/notifications/:id', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.params.id; // Récupère le "5" envoyé par le frontend
+
+        if (parseInt(userId) !== req.auth.userId) {
+            return res.status(403).json({ message: "Accès refusé." });
+        }
+
+        // Modifiez "date_notif" par le vrai nom de votre colonne de date si c'est "created_at"
+        const [notifs] = await db.query('SELECT * FROM notification WHERE id_cond = ?', [userId]);
+        res.json(notifs);
+    } catch (error) {
+        console.error("Erreur Notifications :", error);
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// 3. Récupérer la réservation active (Au cas où votre frontend l'appelle aussi)
 app.get('/api/reservation/active', authMiddleware, async (req, res) => {
     try {
-        const userId = req.auth.userId;
-        const [active] = await db.query('SELECT * FROM reservation WHERE id_cond = ? AND statut = "en_cours" LIMIT 1', [userId]);
+        // On cherche une réservation avec le statut 'en_cours'
+        const [active] = await db.query('SELECT * FROM reservation WHERE id_cond = ? AND statut = "en_cours" LIMIT 1', [req.auth.userId]);
         
         if (active.length > 0) {
             res.json(active[0]);
@@ -1177,8 +1201,6 @@ app.get('/api/reservation/active', authMiddleware, async (req, res) => {
         res.json(null);
     }
 });
-
-
 //=========================================
 // 6. LANCEMENT
 // ==========================================
