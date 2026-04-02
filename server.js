@@ -159,7 +159,6 @@ app.post('/api/auth/signup', upload.single('image'), async (req, res) => {
     res.status(500).json({ message: "Erreur serveur ou email déjà utilisé." });
   }
 });
-
 // CONNEXION
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -168,60 +167,48 @@ app.post('/api/auth/login', async (req, res) => {
     const result = await findUserByEmail(email);
 
     if (!result) {
-      // Message générique pour ne pas confirmer si un email existe ou non (sécurité).
       return res.status(401).json({ message: 'Email ou mot de passe incorrect.' });
     }
 
     const { user, role, userId } = result;
 
-    // --- CONTRÔLE DE SÉCURITÉ : Vérifier si l'utilisateur a un mot de passe pour la connexion standard ---
-    if (!user.password || user.password === 'google_sso_no_password') {
-        console.warn(`Tentative de connexion par mot de passe pour l'utilisateur ${email} qui n'a pas de mot de passe défini (probablement SSO).`);
-        return res.status(400).json({ message: "Ce compte est lié à une connexion Google. Veuillez utiliser le bouton 'Se connecter avec Google'." });
+    // --- CORRECTION 1 : On ajoute 'google_auth' dans la vérification ---
+    if (!user.password || user.password === 'google_sso_no_password' || user.password === 'google_auth') {
+        console.warn(`Tentative classique pour l'utilisateur SSO : ${email}`);
+        return res.status(400).json({ message: "Ce compte a été créé avec Google. Veuillez utiliser le bouton 'Sign in with Google'." });
     }
 
     let isMatch = false;
     try {
-        // On isole la comparaison pour attraper les erreurs de hash invalide.
         isMatch = await bcrypt.compare(password, user.password);
     } catch (bcryptError) {
-        // Cette erreur se produit si user.password n'est pas un hash bcrypt valide.
-        // C'est une erreur serveur, mais on ne veut pas la montrer au client.
-        console.error(`Erreur Bcrypt pour l'utilisateur ${email}: Le hash du mot de passe est probablement invalide.`, bcryptError.message);
-        // On laisse isMatch à false pour que la logique continue comme un mot de passe incorrect.
+        console.error(`Erreur Bcrypt :`, bcryptError.message);
     }
 
     if (!isMatch) {
       return res.status(401).json({ message: 'Email ou mot de passe incorrect.' });
     }
 
-    const token = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
+    // --- CORRECTION 2 : La même sécurité JWT que pour Google ---
+    const secret = process.env.JWT_SECRET || 'fallback_secret_pour_soutenance';
+    const token = jwt.sign({ id: userId, role: role }, secret, { expiresIn: '24h' });
 
     if (user.password) delete user.password;
 
     res.json({ 
       token, 
-      user: { ...user, id: userId, role: role, prenom: user.prenom || null } // Assurez-vous que prenom est toujours présent
+      user: { ...user, id: userId, role: role, prenom: user.prenom || null }
     });
 
-// Dans votre route POST /api/auth/login
-
-} catch (error) {
-  // --- NOUVEAU BLOC DE LOGGING AMÉLIORÉ ---
-  console.error('================================================');
-  console.error('❌ CRASH SUR LA ROUTE DE CONNEXION CLASSIQUE ❌');
-  console.error('================================================');
-  console.error('Heure:', new Date().toISOString());
-  console.error('Email reçu pour la tentative:', req.body.email); // On ne logue jamais le mot de passe !
-  console.error('--- Erreur Détaillée ---');
-  console.error(error); // Affiche l'erreur complète avec sa "stack trace"
-  console.error('------------------------------------------------');
-  // --- FIN DU BLOC ---
-  
-  res.status(500).json({ message: "Erreur interne du serveur. Consultez les logs du backend sur Railway." });
-}
-
-
+  } catch (error) {
+    console.error('================================================');
+    console.error('❌ CRASH SUR LA ROUTE DE CONNEXION CLASSIQUE ❌');
+    console.error('Email:', req.body.email); 
+    console.error(error); 
+    console.error('================================================');
+    
+    res.status(500).json({ message: "Erreur interne du serveur." });
+  }
 });
 // --- INITIALISATION SÉCURISÉE ---
 try {
