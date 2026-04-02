@@ -1158,13 +1158,14 @@ app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
             return res.status(403).json({ message: "Accès refusé." });
         }
 
-        // 🌟 NOUVEAU : On fait des JOIN pour récupérer les infos du parking !
+        // ✅ CORRECTION ICI : On utilise bien pk.tarif_heure (le vrai nom dans votre base)
         const sql = `
             SELECT 
                 r.*, 
                 pk.nom, 
                 pk.adresse, 
-                pk.tarif,
+                pk.tarif_heure AS tarif,
+                pk.tarif_heure,
                 pk.image
             FROM reservation r
             JOIN place pl ON r.id_place = pl.id_place
@@ -1180,7 +1181,6 @@ app.get('/api/reservations/history/:id', authMiddleware, async (req, res) => {
         res.status(500).json({ message: "Erreur serveur" });
     }
 });
-
 // 2. Récupérer les notifications (Le frontend appelle /api/notifications/5)
 app.get('/api/notifications/:id', authMiddleware, async (req, res) => {
     try {
