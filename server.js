@@ -239,7 +239,7 @@ try {
   const decodedToken = await admin.auth().verifyIdToken(token);
   const email = decodedToken.email;
 
-  // ... (Le reste de votre logique pour trouver ou créer l'utilisateur dans la BDD reste ici) ...
+  // Dans la route POST /api/auth/google
 
 } catch (error) {
   // --- NOUVEAU BLOC DE LOGGING AMÉLIORÉ ---
@@ -258,6 +258,7 @@ try {
 
   res.status(401).json({ message: "Token Google invalide ou la vérification a échoué." });
 }
+
 
 });
 
