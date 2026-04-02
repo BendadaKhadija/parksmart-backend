@@ -171,9 +171,9 @@ app.post('/api/auth/login', async (req, res) => {
 
     // --- CONTRÔLE DE SÉCURITÉ : Vérifier si l'utilisateur a un mot de passe pour la connexion standard ---
     // Si l'utilisateur n'a pas de mot de passe (ex: créé via Google), on refuse la connexion par mot de passe.
-    if (!user.password || typeof user.password !== 'string') {
+    if (!user.password || user.password === 'google_sso_no_password') {
         console.warn(`Tentative de connexion par mot de passe pour l'utilisateur ${email} qui n'a pas de mot de passe défini (probablement SSO).`);
-        return res.status(400).json({ message: 'Ce compte a été créé via un service tiers. Veuillez vous connecter avec la méthode d\'origine (ex: Google).' });
+        return res.status(400).json({ message: "Ce compte est lié à une connexion Google. Veuillez utiliser le bouton 'Se connecter avec Google'." });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
