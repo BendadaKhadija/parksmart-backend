@@ -204,82 +204,60 @@ app.post('/api/auth/login', async (req, res) => {
       user: { ...user, id: userId, role: role, prenom: user.prenom || null } // Assurez-vous que prenom est toujours présent
     });
 
-  } catch (error) { // Attrape les autres erreurs fatales inattendues
-    console.error("🚨 ERREUR LOGIN CRITIQUE :", error);
-    res.status(500).json({ message: 'Erreur serveur' });
-  }
+// Dans la route POST /api/auth/login
+
+} catch (error) {
+  // --- NOUVEAU BLOC DE LOGGING AMÉLIORÉ ---
+  console.error('================================================');
+  console.error('❌ CRASH SUR LA ROUTE DE CONNEXION CLASSIQUE ❌');
+  console.error('================================================');
+  console.error('Heure:', new Date().toISOString());
+  console.error('Email reçu pour la tentative:', req.body.email); // Ne jamais logger le mot de passe !
+  console.error('--- Erreur Détaillée ---');
+  console.error(error);
+  console.error('------------------------------------------------');
+  // --- FIN DU BLOC ---
+  
+  res.status(500).json({ message: "Erreur interne du serveur. Consultez les logs du backend sur Railway." });
+}
+
 });
 app.post('/api/auth/google', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ message: 'Aucun token fourni dans le header.' });
-    }
+  // Dans la route POST /api/auth/google
 
-    const token = authHeader.split(' ')[1];
-
-    // --- VÉRIFICATION FIREBASE ---
-    // On s'assure que le token est envoyé à Firebase Admin
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    const email = decodedToken.email;
-
-    // --- RECHERCHE OU CRÉATION UTILISATEUR ---
-    let result = await findUserByEmail(email);
-    let user, role, userId;
-
-    if (!result) {
-      console.log("Nouvel utilisateur Google détecté...");
-      const nomComplet = decodedToken.name || 'Utilisateur Google';
-      const photo = decodedToken.picture || null;
-      const nameParts = nomComplet.split(' ');
-      const prenom = nameParts[0];
-      const nom = nameParts.slice(1).join(' ') || prenom; 
-      
-      const [insertResult] = await db.query(
-        'INSERT INTO conducteur (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
-        [nom, prenom, email, 'google_sso_no_password', photo] 
-      );
-      
-      userId = insertResult.insertId;
-      role = 'conducteur';
-      user = { id_cond: userId, nom, prenom, email, photo };
-    } else {
-      ({ user, role, userId } = result);
-      if (user.photo !== decodedToken.picture) {
-          const photo = decodedToken.picture || null;
-          const table = role === 'conducteur' ? 'conducteur' : 'gestionnaire';
-          const idCol = role === 'conducteur' ? 'id_cond' : 'id_gest';
-          await db.query(`UPDATE ${table} SET photo = ? WHERE ${idCol} = ?`, [photo, userId]);
-          user.photo = photo;
-      }
-    }
-
-    // --- GÉNÉRATION DU TOKEN JWT POUR VOTRE APP ---
-    const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
-
-    console.log(`✅ Connexion Google réussie : ${email}`);
-    
-    res.json({ 
-      token: jwtToken, 
-      user: { 
-          id: userId, 
-          nom: user.nom,
-          prenom: user.prenom,
-          email: user.email, 
-          role: role, 
-          photo: user.photo
-      } 
-    });
-
-  } catch (error) {
-    console.error("🚨 ERREUR GOOGLE AUTH :", error.message);
-    // On renvoie l'erreur précise pour debugger
-    res.status(401).json({ 
-      message: 'Erreur d\'authentification', 
-      error: error.message 
-    });
+try {
+  // 1. On vérifie que le token est bien envoyé dans les en-têtes
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error("❌ Erreur 401 sur /google: Header 'Authorization' manquant ou mal formaté.");
+    return res.status(401).json({ message: "Token manquant ou mal formaté dans les en-têtes." });
   }
+  const token = authHeader.split(' ')[1];
+
+  // 2. On vérifie le token avec Firebase
+  const decodedToken = await admin.auth().verifyIdToken(token);
+  const email = decodedToken.email;
+
+  // ... (Le reste de votre logique pour trouver ou créer l'utilisateur dans la BDD reste ici) ...
+
+} catch (error) {
+  // --- NOUVEAU BLOC DE LOGGING AMÉLIORÉ ---
+  console.error('================================================');
+  console.error('❌ ERREUR 401 SUR LA ROUTE GOOGLE ❌');
+  console.error('================================================');
+  console.error('Heure:', new Date().toISOString());
+  console.error('--- Erreur Détaillée ---');
+  console.error(error);
+  // Affiche le code d'erreur spécifique de Firebase (très utile !)
+  if (error.code) {
+    console.error('Code de l\'erreur Firebase:', error.code);
+  }
+  console.error('------------------------------------------------');
+  // --- FIN DU BLOC ---
+
+  res.status(401).json({ message: "Token Google invalide ou la vérification a échoué." });
+}
+
 });
 
 // ==========================================
