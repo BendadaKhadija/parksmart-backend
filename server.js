@@ -1105,30 +1105,3 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
 app.listen(port, () => {
   console.log(`Serveur Backend prêt sur http://localhost:${port}`);
 });
-    if (!fcmToken) return res.status(400).json({ error: "Token FCM manquant" });
-
-    try {
-        let sql = "";
-        // On vérifie le rôle pour mettre à jour la bonne table
-        if (userRole === 'conducteur' || userRole === 'client') {
-            sql = "UPDATE conducteur SET fcm_token = ? WHERE id_cond = ?";
-        } else {
-            sql = "UPDATE gestionnaire SET fcm_token = ? WHERE id_gest = ?";
-        }
-
-        await db.query(sql, [fcmToken, userId]);
-        console.log(`Token FCM sauvegardé pour l'utilisateur ${userRole} (ID: ${userId})`);
-        
-        res.json({ success: true, message: "Token Firebase enregistré avec succès !" });
-
-    } catch (error) {
-        console.error("Erreur lors de la sauvegarde du Token FCM :", error);
-        res.status(500).json({ error: "Erreur base de données" });
-    }
-});
-//=========================================
-// 6. LANCEMENT
-// ==========================================
-app.listen(port, () => {
-  console.log(`Serveur Backend prêt sur http://localhost:${port}`);
-});
