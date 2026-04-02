@@ -1064,7 +1064,7 @@ cron.schedule('* * * * *', async () => {
         const [reservations] = await db.query(querySelect);
 
         for (const resa of reservations) {
-            const titre = "Rappel de stationnement"; // Changed emoji for consistency with "1 minute"
+            const titre = "Rappel de stationnement "; // Changed emoji for consistency with "1 minute"
             const message = `Attention : Cela fait plus de 1 minute que votre stationnement (Réservation n°${resa.id_resa}) a commencé.`;
 
             const checkNotifQuery = `SELECT id_notif FROM notification WHERE id_cond = ? AND message = ?`;
