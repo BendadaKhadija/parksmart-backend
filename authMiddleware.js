@@ -1,36 +1,42 @@
-// On importe l'outil JWT
 const jwt = require('jsonwebtoken');
-// On s'assure que les variables d'environnement sont chargées
-require('dotenv').config();
 
-// C'est notre "Gardien"
 const authMiddleware = (req, res, next) => {
+  console.log(`\n=== 🚨 TENTATIVE D'ACCÈS À : ${req.method} ${req.originalUrl || req.url} ===`);
+  
   try {
-    // 1. Récupérer le token dans l'en-tête de la requête
-    // Le format est "Bearer VOTRE_LONG_TOKEN"
-    const token = req.headers.authorization.split(' ')[1];
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    console.log("1. Header reçu :", authHeader ? "OUI" : "NON");
 
-    // 2. Vérifier si le token est valide en utilisant le secret depuis .env
-    const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log("❌ ERREUR : Aucun token Bearer trouvé dans l'en-tête.");
+      return res.status(401).json({ message: 'Accès refusé. Aucun token fourni.' });
+    }
 
-    // 3. Extraire l'ID et le rôle de l'utilisateur du token
-    const userId = decodedToken.id;
-    const userRole = decodedToken.role;
+    const token = authHeader.split(' ')[1];
+    const secret = process.env.JWT_SECRET || 'fallback_secret_pour_soutenance';
 
-    // 4. Ajouter ces infos à l'objet "req" pour que la prochaine fonction puisse les utiliser
+    console.log("2. Token extrait, vérification en cours...");
+    
+    // C'est ici que ça plante normalement, voyons pourquoi !
+    const decodedToken = jwt.verify(token, secret);
+
+    console.log("3. ✅ Succès ! Token valide pour l'utilisateur ID :", decodedToken.id, "| Rôle :", decodedToken.role);
+    
     req.auth = {
-      userId: userId,
-      role: userRole
+      userId: decodedToken.id,
+      role: decodedToken.role
     };
 
-    // 5. Tout est bon, on laisse passer à la suite !
     next();
 
   } catch (error) {
-    // S'il n'y a pas de token, ou s'il est faux, on renvoie une erreur
-    res.status(401).json({ message: 'Accès non autorisé. Token invalide ou manquant.' });
+    console.error("❌ ERREUR FATALE MIDDLEWARE :", error.message);
+    // On renvoie la vraie raison au Frontend !
+    return res.status(401).json({ 
+        message: 'Token invalide ou expiré.', 
+        raison_exacte: error.message 
+    });
   }
 };
 
-// On exporte le gardien pour que server.js puisse l'utiliser
 module.exports = authMiddleware;
