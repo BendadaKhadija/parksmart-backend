@@ -1,24 +1,42 @@
-// Middleware pour vérifier les rôles
-const roleMiddleware = (allowedRoles) => {
-  return (req, res, next) => {
-    try {
-      // On vérifie si req.auth existe (il a été créé par authMiddleware juste avant)
-      if (!req.auth || !req.auth.role) {
-        return res.status(403).json({ message: "Accès interdit. Impossible de vérifier votre rôle." });
-      }
+const jwt = require('jsonwebtoken');
 
-      // On vérifie si le rôle de l'utilisateur est dans la liste des rôles autorisés
-      if (!allowedRoles.includes(req.auth.role)) {
-        return res.status(403).json({ message: "Accès refusé. Vous n'avez pas les droits nécessaires." });
-      }
+const authMiddleware = (req, res, next) => {
+  console.log(`\n=== 🚨 TENTATIVE D'ACCÈS À : ${req.method} ${req.originalUrl || req.url} ===`);
+  
+  try {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    console.log("1. Header reçu :", authHeader ? "OUI" : "NON");
 
-      // Si tout est bon, on le laisse passer
-      next();
-    } catch (error) {
-      console.error("Erreur Role Middleware :", error);
-      return res.status(500).json({ message: "Erreur interne lors de la vérification des droits." });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log("❌ ERREUR : Aucun token Bearer trouvé dans l'en-tête.");
+      return res.status(401).json({ message: 'Accès refusé. Aucun token fourni.' });
     }
-  };
+
+    const token = authHeader.split(' ')[1];
+    const secret = process.env.JWT_SECRET || 'fallback_secret_pour_soutenance';
+
+    console.log("2. Token extrait, vérification en cours...");
+    
+    // C'est ici que ça plante normalement, voyons pourquoi !
+    const decodedToken = jwt.verify(token, secret);
+
+    console.log("3. ✅ Succès ! Token valide pour l'utilisateur ID :", decodedToken.id, "| Rôle :", decodedToken.role);
+    
+    req.auth = {
+      userId: decodedToken.id,
+      role: decodedToken.role
+    };
+
+    next();
+
+  } catch (error) {
+    console.error("❌ ERREUR FATALE MIDDLEWARE :", error.message);
+    // On renvoie la vraie raison au Frontend !
+    return res.status(401).json({ 
+        message: 'Token invalide ou expiré.', 
+        raison_exacte: error.message 
+    });
+  }
 };
 
-module.exports = roleMiddleware;
+module.exports = authMiddleware;
