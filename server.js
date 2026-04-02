@@ -50,7 +50,7 @@ const upload = multer({ storage: storage });
 
 // IMPORTANT : Rendre le dossier accessible publiquement
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 55637;
 
 // ==========================================
 // 1. CONNEXION BDD (Compatible Railway + Local)
