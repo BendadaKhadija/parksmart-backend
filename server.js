@@ -508,12 +508,11 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
     try {
         let sql;
         let params;
-        const updatedUser = { nom, email };
+        const updatedUser = { nom, email, prenom };
 
         if (userRole === 'conducteur') {
             let querySet = "UPDATE conducteur SET nom = ?, prenom = ?, email = ?";
             params = [nom, prenom, email];
-            updatedUser.prenom = prenom;
 
             if (newPhotoPath) {
                 querySet += ", photo = ?";
@@ -523,21 +522,20 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
             params.push(userId);
 
         } else if (userRole === 'gestionnaire') {
-            let querySet = "UPDATE gestionnaire SET nom = ?, email = ?";
-            params = [nom, email];
-            updatedUser.prenom = prenom; // On inclut le prénom s'il est fourni
-
+            let querySet = "UPDATE gestionnaire SET nom = ?, prenom = ?, email = ?";
+            params = [nom, prenom, email];
+            
             if (newPhotoPath) {
                 querySet += ", photo = ?";
                 params.push(newPhotoPath);
             }
             sql = `${querySet} WHERE id_gest = ?`;
             params.push(userId);
-
         } else {
-            return res.status(400).json({ message: "Rôle utilisateur invalide." });
+            return res.status(403).json({ message: "Rôle non autorisé." });
         }
 
+        // 👉 LA FAMEUSE LIGNE QUI MANQUAIT POUR QUE ÇA MARCHE !
         const [result] = await db.query(sql, params);
 
         if (result.affectedRows === 0) {
@@ -549,7 +547,7 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
         res.json({ 
             message: "Mise à jour réussie", 
             photo: newPhotoPath, // peut être null
-            user: { ...updatedUser, prenom: updatedUser.prenom || null } // Assurez-vous que prenom est toujours présent
+            user: updatedUser 
         });
 
     } catch (error) {
@@ -1016,6 +1014,21 @@ app.post('/api/reviews', authMiddleware, roleMiddleware(['conducteur']), async (
     console.log("Tentative d'ajout d'avis :", { id_park, id_user: id_user, note, commentaire });
 
     try {
+        // AMÉLIORATION : Vérifier si l'utilisateur a déjà une réservation terminée pour ce parking.
+        // Cela évite les faux avis.
+        const checkResaSql = `
+            SELECT r.id_resa 
+            FROM reservation r
+            JOIN place pl ON r.id_place = pl.id_place
+            WHERE r.id_cond = ? AND pl.id_park = ? AND r.date_depart IS NOT NULL
+            LIMIT 1
+        `;
+        const [reservationsPassees] = await db.query(checkResaSql, [id_user, id_park]);
+
+        if (reservationsPassees.length === 0) {
+            return res.status(403).json({ message: "Vous ne pouvez laisser un avis que sur les parkings que vous avez utilisés." });
+        }
+
         // ÉTAPE 1 : Trouver l'ID du gestionnaire (id_gest) qui possède ce parking
         const sqlGetGest = "SELECT id_gest FROM parking WHERE id_park = ?";
         const [rows] = await db.query(sqlGetGest, [id_park]);
