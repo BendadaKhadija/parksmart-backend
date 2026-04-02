@@ -31,7 +31,7 @@ const authMiddleware = (req, res, next) => {
 
   } catch (error) {
     console.error("❌ ERREUR FATALE MIDDLEWARE :", error.message);
-    // On renvoie la vraie raison au Frontend !
+    // On renvoie la vraie raison   au Frontend !
     return res.status(401).json({ 
         message: 'Token invalide ou expiré.', 
         raison_exacte: error.message 
