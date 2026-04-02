@@ -54,7 +54,7 @@ const upload = multer({ storage: storage });
 
 // IMPORTANT : Rendre le dossier accessible publiquement
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-const port = process.env.PORT || 55637;
+const port = process.env.PORT || 3000;
 
 // ==========================================
 // 1. CONNEXION BDD (Compatible Railway+Local)
@@ -223,43 +223,87 @@ app.post('/api/auth/login', async (req, res) => {
 
 
 });
-app.post('/api/auth/google', async (req, res) => {
-  // Dans la route POST /api/auth/google
-
+// --- INITIALISATION SÉCURISÉE ---
 try {
-  // 1. On vérifie que le token est bien envoyé dans les en-têtes
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.error("❌ Erreur 401 sur /google: Header 'Authorization' manquant ou mal formaté.");
-    return res.status(401).json({ message: "Token manquant ou mal formaté dans les en-têtes." });
+  if (!admin.apps.length) {
+    const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
+    
+    if (serviceAccountString) {
+      const serviceAccount = JSON.parse(serviceAccountString);
+      // Correction vitale pour Railway
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("✅ Firebase Admin initialisé avec succès.");
+    } else {
+      console.error("❌ Variable FIREBASE_SERVICE_ACCOUNT manquante !");
+    }
   }
-  const token = authHeader.split(' ')[1];
-
-  // 2. On vérifie le token avec Firebase
-  const decodedToken = await admin.auth().verifyIdToken(token);
-  const email = decodedToken.email;
-
-  // Dans la route POST /api/auth/google
-
-} catch (error) {
-  // --- NOUVEAU BLOC DE LOGGING AMÉLIORÉ ---
-  console.error('================================================');
-  console.error('❌ ERREUR 401 SUR LA ROUTE GOOGLE ❌');
-  console.error('================================================');
-  console.error('Heure:', new Date().toISOString());
-  console.error('--- Erreur Détaillée ---');
-  console.error(error);
-  // Affiche le code d'erreur spécifique de Firebase (très utile !)
-  if (error.code) {
-    console.error('Code de l\'erreur Firebase:', error.code);
-  }
-  console.error('------------------------------------------------');
-  // --- FIN DU BLOC ---
-
-  res.status(401).json({ message: "Token Google invalide ou la vérification a échoué." });
+} catch (e) {
+  console.error("🚨 Erreur critique initialisation Firebase:", e.message);
 }
 
+// --- LA ROUTE GOOGLE BÉTONNÉE ---
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Token manquant' });
+    }
 
+    const token = authHeader.split(' ')[1];
+    
+    // Vérification Firebase
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const email = decodedToken.email;
+
+    // REQUÊTE DB (On utilise un bloc Try/Catch interne pour éviter de crash tout le serveur)
+    let user, role, userId;
+    try {
+      // Modifie ces requêtes selon tes noms de tables exacts
+      const [rows] = await db.query('SELECT * FROM conducteur WHERE email = ?', [email]);
+      
+      if (rows.length === 0) {
+        // Création si inexistant
+        const nomComplet = decodedToken.name || 'Utilisateur';
+        const [prenom, ...nomRest] = nomComplet.split(' ');
+        const nom = nomRest.join(' ') || prenom;
+        const photo = decodedToken.picture || null;
+
+        const [insert] = await db.query(
+          'INSERT INTO conducteur (nom, prenom, email, password, photo) VALUES (?, ?, ?, ?, ?)',
+          [nom, prenom, email, 'google_auth', photo]
+        );
+        userId = insert.insertId;
+        role = 'conducteur';
+        user = { nom, prenom, email, photo };
+      } else {
+        user = rows[0];
+        userId = user.id_cond;
+        role = 'conducteur';
+      }
+    } catch (dbError) {
+      console.error("🚨 Erreur Base de données:", dbError.message);
+      return res.status(500).json({ message: "Erreur de base de données" });
+    }
+
+    // GÉNÉRATION JWT (Vérifie que JWT_SECRET est sur Railway !)
+    const secret = process.env.JWT_SECRET || 'fallback_secret_pour_soutenance';
+    const jwtToken = jwt.sign({ id: userId, role: role }, secret, { expiresIn: '24h' });
+
+    res.json({
+      token: jwtToken,
+      user: { id: userId, email, role, nom: user.nom, photo: user.photo }
+    });
+
+  } catch (error) {
+    console.error("🚨 Erreur Auth Google:", error.message);
+    res.status(401).json({ message: "Authentification échouée", detail: error.message });
+  }
 });
 
 // ==========================================
