@@ -91,18 +91,27 @@ db.getConnection()
 /**
  * Trouve un utilisateur par email dans les tables conducteur et gestionnaire.
  * @param {string} email L'email de l'utilisateur à trouver.
- * @returns {Promise<Object|null>} Un objet contenant l'utilisateur, son rôle et son ID, ou null si non trouvé.
+ * @returns {Promise<Object|null>} Un objet contenant l'utilisateur, son rôle et son ID, ou null si non trouvé ou en cas d'erreur.
  */
 const findUserByEmail = async (email) => {
-  const [conds] = await db.query('SELECT id_cond, nom, prenom, email, password, photo FROM conducteur WHERE email = ?', [email]);
-  if (conds.length > 0) {
-    return { user: conds[0], role: 'conducteur', userId: conds[0].id_cond };
+  try {
+    const [conds] = await db.query('SELECT id_cond, nom, prenom, email, password, photo FROM conducteur WHERE email = ?', [email]);
+    if (conds.length > 0) {
+      return { user: conds[0], role: 'conducteur', userId: conds[0].id_cond };
+    }
+    
+    const [gests] = await db.query('SELECT id_gest, nom, prenom, email, password, photo FROM gestionnaire WHERE email = ?', [email]);
+    if (gests.length > 0) {
+      // Les gestionnaires pourraient ne pas avoir de prénom par défaut dans la BDD, on s'assure qu'il soit présent
+      gests[0].prenom = gests[0].prenom || null; 
+      return { user: gests[0], role: 'gestionnaire', userId: gests[0].id_gest };
+    }
+    return null;
+  } catch (error) {
+    console.error("Erreur lors de la recherche d'utilisateur par email:", error);
+    // Renvoyer null pour indiquer qu'aucun utilisateur n'a été trouvé (ou qu'une erreur DB est survenue)
+    return null; 
   }
-  const [gests] = await db.query('SELECT id_gest, nom, prenom, email, password, photo FROM gestionnaire WHERE email = ?', [email]);
-  if (gests.length > 0) {
-    return { user: gests[0], role: 'gestionnaire', userId: gests[0].id_gest };
-  }
-  return null;
 };
 
 // ==========================================
@@ -143,7 +152,7 @@ app.post('/api/auth/signup', upload.single('image'), async (req, res) => {
 
   } catch (error) {
     console.error("Erreur Inscription :", error);
-    res.status(500).json({ message: "Erreur serveur ou Email déjà utilisé." });
+    res.status(500).json({ message: "Erreur serveur ou email déjà utilisé." });
   }
 });
 
@@ -168,14 +177,14 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     // On ne renvoie jamais le mot de passe, même hashé
-    delete user.password;
+    if (user.password) delete user.password;
 
     res.json({ 
       token, 
-      user: { ...user, id: userId, role: role } 
+      user: { ...user, id: userId, role: role, prenom: user.prenom || null } // Assurez-vous que prenom est toujours présent
     });
 
-  } catch (error) {
+  } catch (error) { // Catch all other potential errors
     console.error("Erreur Login :", error);
     res.status(500).json({ message: 'Erreur serveur' });
   }
@@ -218,14 +227,14 @@ app.post('/api/auth/google', async (req, res) => {
     const jwtToken = jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
     console.log(`Connexion Google réussie pour : ${email}`);
-
-    delete user.password;
+    
+    if (user.password) delete user.password;
 
     res.json({ 
       token: jwtToken, 
       user: { 
           id: userId, 
-          nom: user.nom, 
+          nom: user.nom,
           email: user.email, 
           role: role, 
           photo: user.photo
@@ -494,7 +503,7 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
         res.json({ 
             message: "Mise à jour réussie", 
             photo: newPhotoPath, // peut être null
-            user: updatedUser
+            user: { ...updatedUser, prenom: updatedUser.prenom || null } // Assurez-vous que prenom est toujours présent
         });
 
     } catch (error) {
@@ -1023,7 +1032,7 @@ cron.schedule('* * * * *', async () => {
         const [reservations] = await db.query(querySelect);
 
         for (const resa of reservations) {
-            const titre = "Rappel de stationnement ⏰";
+            const titre = "Rappel de stationnement ⏳"; // Changed emoji for consistency with "1 minute"
             const message = `Attention : Cela fait plus de 1 minute que votre stationnement (Réservation n°${resa.id_resa}) a commencé.`;
 
             const checkNotifQuery = `SELECT id_notif FROM notification WHERE id_cond = ? AND message = ?`;
@@ -1069,6 +1078,33 @@ app.post('/api/user/fcm-token', authMiddleware, async (req, res) => {
     const userRole = req.auth.role; // 'conducteur' ou 'gestionnaire'
     const { fcmToken } = req.body;
 
+    if (!fcmToken) return res.status(400).json({ error: "Token FCM manquant" });
+
+    try {
+        let sql = "";
+        // On vérifie le rôle pour mettre à jour la bonne table
+        if (userRole === 'conducteur' || userRole === 'client') {
+            sql = "UPDATE conducteur SET fcm_token = ? WHERE id_cond = ?";
+        } else {
+            sql = "UPDATE gestionnaire SET fcm_token = ? WHERE id_gest = ?";
+        }
+
+        await db.query(sql, [fcmToken, userId]);
+        console.log(`Token FCM sauvegardé pour l'utilisateur ${userRole} (ID: ${userId})`);
+        
+        res.json({ success: true, message: "Token Firebase enregistré avec succès !" });
+
+    } catch (error) {
+        console.error("Erreur lors de la sauvegarde du Token FCM :", error);
+        res.status(500).json({ error: "Erreur base de données" });
+    }
+});
+//=========================================
+// 6. LANCEMENT
+// ==========================================
+app.listen(port, () => {
+  console.log(`Serveur Backend prêt sur http://localhost:${port}`);
+});
     if (!fcmToken) return res.status(400).json({ error: "Token FCM manquant" });
 
     try {
