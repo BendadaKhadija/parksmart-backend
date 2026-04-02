@@ -53,7 +53,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const port = process.env.PORT || 55637;
 
 // ==========================================
-// 1. CONNEXION BDD (Compatible Railway + Local)
+// 1. CONNEXION BDD (Compatible Railway+Local)
 // ==========================================
 let db;
 if (process.env.MYSQL_URL) {
