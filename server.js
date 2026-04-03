@@ -754,40 +754,43 @@ app.post('/api/reservation/stop', authMiddleware, async (req, res) => {
             await connection.rollback();
             return res.status(400).json({ message: "Cette réservation est déjà terminée." });
         }
-
-        // 2. Calcul du prix
+// --- 2. RÉCUPÉRATION DU TARIF ET CALCUL DU PRIX ---
         const dateDebut = new Date(resa.date_arrivee);
         const dateFin = new Date();
         
-        // Calcul durée en millisecondes
         let diffMs = dateFin - dateDebut;
         if (diffMs < 0) diffMs = 0; 
 
-        // Conversion en heures (arrondi supérieur)
+        // On calcule le nombre de secondes exactes
         const diffSeconds = Math.floor(diffMs / 1000);
-        const hours = Math.ceil(diffSeconds / 3600); // Ex: 1h05 = 2h payantes
-        const minutes = Math.floor((diffSeconds % 3600) / 60);
 
-        // RÉCUPÉRATION DU VRAI TARIF HORAIRE
-        const [parking] = await connection.query(
+        // RÉCUPÉRATION DU TARIF DANS LA BASE DE DONNÉES (On le fait AVANT le calcul)
+        const [parkingResult] = await connection.query(
             `SELECT p.tarif_heure FROM parking p 
              JOIN place pl ON p.id_park = pl.id_park 
              WHERE pl.id_place = ?`,
             [resa.id_place]
         );
 
-        // Utilise le tarif du parking, ou 4.00 comme valeur par défaut si non trouvé
-        const tarifHoraire = parking.length > 0 ? parking[0].tarif_heure : 4.00;
-        const montant = (Math.max(1, hours) * tarifHoraire).toFixed(2); // Minimum 1h facturée
+        // On définit le tarif (ou 4.00 par défaut)
+        const tarifHoraire = parkingResult.length > 0 ? parkingResult[0].tarif_heure : 4.00;
 
-        console.log(`Calcul: ${hours}h * ${tarifHoraire}DH/h = ${montant} DH`);
+        // CALCUL DU PRIX AU PRORATA (Prix à la seconde près)
+        const montantCalculé = ((diffSeconds / 3600) * tarifHoraire).toFixed(2);
 
-        // 3. Mettre à jour la Réservation (Date fin + Prix)
+        // MONTANT FINAL (On applique un minimum de 0.50 DH pour éviter le 0.00)
+        const montantFinal = Math.max(0.50, parseFloat(montantCalculé)).toFixed(2);
+
+        console.log(`Durée: ${diffSeconds}s | Tarif: ${tarifHoraire}DH/h | Total: ${montantFinal} DH`);
+
+        // --- 3. MISE À JOUR DE LA RÉSERVATION ---
         await connection.query(
             "UPDATE reservation SET date_depart = ?, prix_total = ? WHERE id_resa = ?",
-            [dateFin, montant, id_resa]
+            [dateFin, montantFinal, id_resa]
         );
 
+        // On renvoie le montant au frontend
+        res.json({ success: true, montant: montantFinal });
         // 4. LIBÉRER LA place (C'était l'oubli critique !)
         // On remet disponibilite à 1 (Libre)
         await connection.query(
