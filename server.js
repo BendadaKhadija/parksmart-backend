@@ -1003,6 +1003,38 @@ app.get('/api/manager/earnings', authMiddleware, roleMiddleware(['gestionnaire']
         res.status(500).json({ error: "Erreur serveur" });
     }
 });
+// Route Backend (index.js)
+app.put('/api/manager/update', authMiddleware, upload.single('image'), async (req, res) => {
+    const idGest = req.auth.userId; // Sécurité : on prend l'ID du token
+    const { nom, email } = req.body;
+    let imagePath = null;
+
+    if (req.file) {
+        imagePath = `/uploads/${req.file.filename}`; // Chemin de la nouvelle photo
+    }
+
+    try {
+        let sql = "UPDATE gestionnaire SET nom = ?, email = ?";
+        let params = [nom, email];
+
+        if (imagePath) {
+            sql += ", photo = ?"; // Assure-toi que la colonne s'appelle 'photo' ou 'image'
+            params.push(imagePath);
+        }
+
+        sql += " WHERE id_gest = ?";
+        params.push(idGest);
+
+        await db.query(sql, params);
+
+        res.json({ 
+            success: true, 
+            newImage: imagePath // Très important : ton front attend 'newImage'
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Erreur DB" });
+    }
+});
 // ==========================================
 // ROUTES : avis / REVIEWS
 // ==========================================
