@@ -34,8 +34,20 @@ if (serviceAccountString) {
 
 const app = express();
 app.use(express.json());
-app.use(cors());
-// Création du dossier 'uploads' s'il n'existe pas
+
+// --- CONFIGURATION CORS COMPLÈTE ---
+app.use(cors({
+    origin: [
+        'https://parksmart-frontend.vercel.app', // Autorise ton site en ligne
+        'http://localhost:5173',                 // Autorise ton frontend local
+        'http://localhost:3000'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
+
+// Création du dossier 'uploads' s'il n'existe pas// Création du dossier 'uploads' s'il n'existe pas
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
