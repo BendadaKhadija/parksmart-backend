@@ -521,8 +521,7 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
         // 2. Gestion du mot de passe
         if (password) {
             const hashedPassword = await bcrypt.hash(password, 10);
-            // ⚠️ REMPLACE 'mot_de_passe' PAR LE VRAI NOM DE TA COLONNE DANS TA BASE DE DONNÉES (ex: 'password', 'mdp')
-            fieldsToUpdate.push("mot_de_passe = ?"); 
+            fieldsToUpdate.push("password = ?"); 
             params.push(hashedPassword);
         }
         // Si on a appelé la route mais sans aucune donnée
