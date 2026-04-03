@@ -497,7 +497,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ==========================================
 // ROUTE : MISE À JOUR PROFIL (Unifiée & Dynamique)
 // ==========================================
-const bcrypt = require('bcrypt'); // ⚠️ Assure-toi d'avoir ça en haut de ton fichier !
 
 app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res) => {
     console.log("Demande de mise à jour de profil reçue...", req.body);
