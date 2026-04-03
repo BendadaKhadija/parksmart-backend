@@ -495,47 +495,59 @@ app.get('/api/parkings', async (req, res) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ==========================================
-// ROUTE : MISE À JOUR PROFIL (Unifiée)
+// ROUTE : MISE À JOUR PROFIL (Unifiée & Dynamique)
 // ==========================================
+const bcrypt = require('bcrypt'); // ⚠️ Assure-toi d'avoir ça en haut de ton fichier !
+
 app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res) => {
-    console.log("Demande de mise à jour de profil reçue...");
+    console.log("Demande de mise à jour de profil reçue...", req.body);
 
     const userId = req.auth.userId; 
     const userRole = req.auth.role;
-    const { nom, prenom, email } = req.body;
+    
+    // On récupère toutes les données possibles envoyées par le frontend
+    const { nom, prenom, email, password } = req.body;
     const newPhotoPath = req.file ? `/uploads/${req.file.filename}` : null;
 
     try {
-        let sql;
-        let params;
-        const updatedUser = { nom, email, prenom };
+        let fieldsToUpdate = [];
+        let params = [];
 
+        // 1. Construction dynamique de la requête : On n'ajoute que ce qui a été envoyé !
+        if (nom) { fieldsToUpdate.push("nom = ?"); params.push(nom); }
+        if (prenom) { fieldsToUpdate.push("prenom = ?"); params.push(prenom); }
+        if (email) { fieldsToUpdate.push("email = ?"); params.push(email); }
+        if (newPhotoPath) { fieldsToUpdate.push("photo = ?"); params.push(newPhotoPath); }
+        
+        // 2. Gestion du mot de passe
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            // ⚠️ REMPLACE 'mot_de_passe' PAR LE VRAI NOM DE TA COLONNE DANS TA BASE DE DONNÉES (ex: 'password', 'mdp')
+            fieldsToUpdate.push("mot_de_passe = ?"); 
+            params.push(hashedPassword);
+        }
+
+        // Si on a appelé la route mais sans aucune donnée
+        if (fieldsToUpdate.length === 0) {
+            return res.status(400).json({ message: "Aucune donnée à mettre à jour." });
+        }
+
+        // On assemble les morceaux de la requête SQL
+        const querySet = fieldsToUpdate.join(", ");
+        let sql = "";
+
+        // 3. Application selon le rôle
         if (userRole === 'conducteur') {
-            let querySet = "UPDATE conducteur SET nom = ?, prenom = ?, email = ?";
-            params = [nom, prenom, email];
-
-            if (newPhotoPath) {
-                querySet += ", photo = ?";
-                params.push(newPhotoPath);
-            }
-            sql = `${querySet} WHERE id_cond = ?`;
+            sql = `UPDATE conducteur SET ${querySet} WHERE id_cond = ?`;
             params.push(userId);
-
         } else if (userRole === 'gestionnaire') {
-            let querySet = "UPDATE gestionnaire SET nom = ?, prenom = ?, email = ?";
-            params = [nom, prenom, email];
-            
-            if (newPhotoPath) {
-                querySet += ", photo = ?";
-                params.push(newPhotoPath);
-            }
-            sql = `${querySet} WHERE id_gest = ?`;
+            sql = `UPDATE gestionnaire SET ${querySet} WHERE id_gest = ?`;
             params.push(userId);
         } else {
             return res.status(403).json({ message: "Rôle non autorisé." });
         }
 
-        // 👉 LA FAMEUSE LIGNE QUI MANQUAIT POUR QUE ÇA MARCHE !
+        // 4. Exécution de la requête
         const [result] = await db.query(sql, params);
 
         if (result.affectedRows === 0) {
@@ -546,8 +558,9 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
         
         res.json({ 
             message: "Mise à jour réussie", 
-            photo: newPhotoPath, // peut être null
-            user: updatedUser 
+            photo: newPhotoPath,
+            // On renvoie ce qui a été mis à jour
+            updatedFields: Object.keys(req.body) 
         });
 
     } catch (error) {
