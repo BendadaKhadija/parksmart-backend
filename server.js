@@ -525,7 +525,6 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
             fieldsToUpdate.push("mot_de_passe = ?"); 
             params.push(hashedPassword);
         }
-
         // Si on a appelé la route mais sans aucune donnée
         if (fieldsToUpdate.length === 0) {
             return res.status(400).json({ message: "Aucune donnée à mettre à jour." });
