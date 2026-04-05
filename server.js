@@ -578,6 +578,44 @@ app.put('/api/profile', authMiddleware, upload.single('photo'), async (req, res)
     }
 });
 // ==========================================
+// ROUTE : Historique Visuel (SÉCURISÉE)
+// ==========================================
+// 1. On ajoute 'authMiddleware' pour forcer la vérification du Token
+app.get('/api/reservations/history', authMiddleware, async (req, res) => {
+    
+    // 2. LE SECRET EST ICI : On ignore req.params.id (l'URL)
+    // On prend l'ID directement depuis le token de la personne connectée !
+    const idconducteur = req.auth.userId; 
+
+    try {
+        const sql = `
+            SELECT 
+                pk.id_park,
+                r.id_resa,
+                r.date_arrivee,
+                r.date_depart,
+                pk.nom,          
+                pk.adresse,      
+                pk.image,        
+                pk.tarif_heure,  
+                r.prix_total     
+            FROM reservation r
+            JOIN place pl ON r.id_place = pl.id_place
+            JOIN parking pk ON pl.id_park = pk.id_park
+            WHERE r.id_cond = ? 
+            ORDER BY r.date_arrivee DESC
+        `;
+
+        const [results] = await db.query(sql, [idconducteur]);
+        
+        res.json(results);
+
+    } catch (err) {
+        console.error("Erreur historique :", err);
+        res.status(500).json({ error: "Erreur serveur lors de la récupération de l'historique" });
+    }
+});
+// ==========================================
 // 5. ROUTES CLIENT (MAP & réservation)
 // ==========================================
 
@@ -871,7 +909,7 @@ app.get('/api/reservations/:id', authMiddleware, async (req, res) => {
                 r.prix_total,          /* <-- ON AJOUTE LE PRIX ICI */
                 c.nom AS nom_client 
             FROM reservation r
-            JOIN utilisateur c ON r.id_cond = c.id 
+            JOIN conducteur c ON r.id_cond = c.id_cond
             WHERE r.id_resa = ?
         `, [id_resa]);
 
@@ -886,44 +924,7 @@ app.get('/api/reservations/:id', authMiddleware, async (req, res) => {
         res.status(500).json({ message: "Erreur serveur." });
     }
 });
-// ==========================================
-// ROUTE : Historique Visuel (SÉCURISÉE)
-// ==========================================
-// 1. On ajoute 'authMiddleware' pour forcer la vérification du Token
-app.get('/api/reservations/history', authMiddleware, async (req, res) => {
-    
-    // 2. LE SECRET EST ICI : On ignore req.params.id (l'URL)
-    // On prend l'ID directement depuis le token de la personne connectée !
-    const idconducteur = req.auth.userId; 
 
-    try {
-        const sql = `
-            SELECT 
-                pk.id_park,
-                r.id_resa,
-                r.date_arrivee,
-                r.date_depart,
-                pk.nom,          
-                pk.adresse,      
-                pk.image,        
-                pk.tarif_heure,  
-                r.prix_total     
-            FROM reservation r
-            JOIN place pl ON r.id_place = pl.id_place
-            JOIN parking pk ON pl.id_park = pk.id_park
-            WHERE r.id_cond = ? 
-            ORDER BY r.date_arrivee DESC
-        `;
-
-        const [results] = await db.query(sql, [idconducteur]);
-        
-        res.json(results);
-
-    } catch (err) {
-        console.error("Erreur historique :", err);
-        res.status(500).json({ error: "Erreur serveur lors de la récupération de l'historique" });
-    }
-});
 
 // Route sécurisée pour récupérer les notifications de l'utilisateur connecté
 app.get('/api/notifications', authMiddleware, async (req, res) => {
