@@ -864,15 +864,14 @@ app.get('/api/reservations/:id', authMiddleware, async (req, res) => {
     const id_resa = req.params.id;
 
     try {
-        // On fait une jointure (JOIN) pour récupérer la réservation ET le nom du conducteur
-        // ⚠️ ATTENTION : Adaptez 'utilisateur' et 'nom' selon le vrai nom de votre table dans la BDD
         const [rows] = await db.query(`
             SELECT 
                 r.id_resa, 
                 r.id_place AS place, 
+                r.prix_total,          /* <-- ON AJOUTE LE PRIX ICI */
                 c.nom AS nom_client 
             FROM reservation r
-            JOIN utilisateur c ON r.id_cond = c.id -- Remplacez par vos vrais noms de table/colonnes
+            JOIN utilisateur c ON r.id_cond = c.id 
             WHERE r.id_resa = ?
         `, [id_resa]);
 
@@ -880,7 +879,6 @@ app.get('/api/reservations/:id', authMiddleware, async (req, res) => {
             return res.status(404).json({ message: "Réservation introuvable." });
         }
 
-        // Si on trouve la réservation, on la renvoie au frontend (React)
         res.json(rows[0]);
 
     } catch (err) {
