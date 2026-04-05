@@ -772,7 +772,7 @@ app.post('/api/reservation/stop', authMiddleware, async (req, res) => {
             [resa.id_place]
         );
 
-        // On définit le tarif (ou 4.00 par défaut)
+        // On définit le tarif 
         const tarifHoraire = parkingResult.length > 0 ? parkingResult[0].tarif_heure : 4.00;
 
         // CALCUL DU PRIX AU PRORATA (Prix à la seconde près)
@@ -791,7 +791,7 @@ app.post('/api/reservation/stop', authMiddleware, async (req, res) => {
 
         // On renvoie le montant au frontend
         res.json({ success: true, montant: montantFinal });
-        // 4. LIBÉRER LA place (C'était l'oubli critique !)
+        // 4. LIBÉRER LA place 
         // On remet disponibilite à 1 (Libre)
         await connection.query(
             "UPDATE place SET disponibilite = 1 WHERE id_place = ?",
@@ -855,6 +855,37 @@ app.post('/api/paiement/confirm', authMiddleware, async (req, res) => {
             return res.status(409).json({ success: false, message: "Un paiement a déjà été enregistré pour cette réservation." });
         }
         res.status(500).json({ success: false, message: "Erreur serveur", details: err.message });
+    }
+});
+// ==========================================
+// ROUTE MANAGER : Lire les infos du QR Code
+// ==========================================
+app.get('/api/reservations/:id', authMiddleware, async (req, res) => {
+    const id_resa = req.params.id;
+
+    try {
+        // On fait une jointure (JOIN) pour récupérer la réservation ET le nom du conducteur
+        // ⚠️ ATTENTION : Adaptez 'utilisateur' et 'nom' selon le vrai nom de votre table dans la BDD
+        const [rows] = await db.query(`
+            SELECT 
+                r.id_resa, 
+                r.id_place AS place, 
+                c.nom AS nom_client 
+            FROM reservation r
+            JOIN utilisateur c ON r.id_cond = c.id -- Remplacez par vos vrais noms de table/colonnes
+            WHERE r.id_resa = ?
+        `, [id_resa]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "Réservation introuvable." });
+        }
+
+        // Si on trouve la réservation, on la renvoie au frontend (React)
+        res.json(rows[0]);
+
+    } catch (err) {
+        console.error("Erreur lecture QR Code :", err);
+        res.status(500).json({ message: "Erreur serveur." });
     }
 });
 // ==========================================
